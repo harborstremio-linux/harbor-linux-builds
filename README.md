@@ -5,7 +5,7 @@ Unofficial Linux builds of [Harbor](https://github.com/harborstremio/harbor), bu
 <p align="center">
   <a href="https://github.com/AdityaHebballe/harbor-linux-builds/releases/latest"><strong>Download stable</strong></a>
   ·
-  <a href="https://github.com/AdityaHebballe/harbor-linux-builds/releases/tag/beta-v0.9.112-d4ebb895973f"><strong>Download beta</strong></a>
+  <a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.113-8a16e414c3ab"><strong>Download beta</strong></a>
   ·
   <a href="https://github.com/harborstremio/harbor"><strong>Harbor upstream</strong></a>
 </p>
@@ -67,7 +67,7 @@ sha256sum -c SHA256SUMS-*.txt
 
 Beta packages follow Harbor's `beta-branch` and are published as GitHub pre-releases every five hours when that branch changes.
 
-- [Download the current beta](https://github.com/AdityaHebballe/harbor-linux-builds/releases/tag/beta-v0.9.112-d4ebb895973f)
+- [Download the current beta](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.113-8a16e414c3ab)
 - Arch Linux: [`harbor-stremio-beta-bin`](https://aur.archlinux.org/packages/harbor-stremio-beta-bin)
 
 ```bash
