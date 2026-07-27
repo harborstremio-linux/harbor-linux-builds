@@ -32,6 +32,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_REF: ${{ inputs.ref || 'beta-branch' }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
 
@@ -49,9 +50,13 @@ jobs:
             exit 1
           fi
 
-          short_sha="${source_ref:0:12}"
+          # Reuse an existing versioned release even if it retains a legacy
+          # commit-suffixed Git tag from before beta releases became version-based.
+          existing_tag="$(gh release list --repo "${REPOSITORY}" --limit 100 --json name,tagName | jq -r --arg name "Harbor Linux beta-v${version}" '.[] | select(.name == $name) | .tagName' | head -n 1)"
+          tag="${existing_tag:-beta-v${version}}"
+
           echo "source_ref=${source_ref}" >> "${GITHUB_OUTPUT}"
-          echo "tag=beta-v${version}-${short_sha}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
   build:
