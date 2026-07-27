@@ -155,7 +155,7 @@ jobs:
           const path = "src-tauri/tauri.conf.json";
           const config = JSON.parse(fs.readFileSync(path, "utf8"));
           config.bundle.createUpdaterArtifacts = false;
-          fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\\n`);
+          fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
           '
 
       - name: Build Debian bundle
