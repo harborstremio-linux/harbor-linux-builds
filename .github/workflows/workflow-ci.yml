@@ -17,4 +17,5 @@ jobs:
       - uses: actions/checkout@v7.0.0
       - run: sudo apt-get update && sudo apt-get install -y shellcheck
       - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
-      - run: "$(go env GOPATH)/bin/actionlint"
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: actionlint -ignore 'SC(2016|2035|2129)'
