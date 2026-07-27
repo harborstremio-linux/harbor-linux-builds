@@ -133,6 +133,13 @@ jobs:
               -name 'libwayland-server.so*' \
               \) -print -delete
 
+            # AppRun sets LD_LIBRARY_PATH for the whole process tree. A bundled
+            # libreadline makes host /bin/sh resolve an incompatible readline
+            # symbol, breaking gsettings calls in the GTK runtime hook.
+            # Harbor does not link against readline, and every supported
+            # desktop distro provides the host library for shell utilities.
+            find squashfs-root -type f -name 'libreadline.so*' -print -delete
+
             curl --fail --location --retry 3 --retry-all-errors \
               --output appimagetool \
               'https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage'
@@ -174,6 +181,10 @@ jobs:
             -name 'libwayland-server.so*' \
             \) -print -quit | grep -q .; then
             echo "AppImage still contains bundled graphics libraries" >&2
+            exit 1
+          fi
+          if find "${tmpdir}/squashfs-root" -type f -name 'libreadline.so*' -print -quit | grep -q .; then
+            echo "AppImage still contains bundled libreadline" >&2
             exit 1
           fi
 
