@@ -1,0 +1,98 @@
+name: Publish AUR package
+description: Update an AUR binary package from a verified Harbor Debian release asset.
+
+inputs:
+  version:
+    required: true
+  tag:
+    required: true
+  channel:
+    required: true
+  package:
+    required: true
+  deb_asset:
+    required: true
+  deb_sha256:
+    required: true
+  repository:
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Configure AUR SSH
+      shell: bash
+      env:
+        AUR_SSH_PRIVATE_KEY: ${{ env.AUR_SSH_PRIVATE_KEY }}
+      run: |
+        set -euo pipefail
+        test -n "${AUR_SSH_PRIVATE_KEY}"
+        mkdir -p ~/.ssh
+        install -m 600 /dev/null ~/.ssh/aur
+        printf '%s\n' "${AUR_SSH_PRIVATE_KEY}" > ~/.ssh/aur
+        ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+        printf '%s\n' 'Host aur.archlinux.org' '  HostName aur.archlinux.org' '  User aur' '  IdentityFile ~/.ssh/aur' '  IdentitiesOnly yes' > ~/.ssh/config
+
+    - name: Update AUR package
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        TAG: ${{ inputs.tag }}
+        CHANNEL: ${{ inputs.channel }}
+        AUR_PACKAGE: ${{ inputs.package }}
+        DEB_ASSET: ${{ inputs.deb_asset }}
+        DEB_SHA256: ${{ inputs.deb_sha256 }}
+        REPOSITORY: ${{ inputs.repository }}
+      run: |
+        set -euo pipefail
+        tmpdir="$(mktemp -d)"
+        trap 'rm -rf "${tmpdir}"' EXIT
+        git clone "ssh://aur@aur.archlinux.org/${AUR_PACKAGE}.git" "${tmpdir}"
+        if [ "${CHANNEL}" = beta ]; then
+          package_desc='A Stremio client built for adventure (beta binary release)'
+          provides="provides=('harbor-stremio-beta' 'harbor')"
+          conflicts="conflicts=('harbor-stremio-bin' 'harbor-stremio' 'harbor' 'harbor-stremio-git')"
+        else
+          package_desc='A Stremio client built for adventure (binary release)'
+          provides="provides=('harbor-stremio' 'harbor')"
+          conflicts="conflicts=('harbor-stremio' 'harbor' 'harbor-stremio-git')"
+        fi
+        pkgrel=1
+        if [ -f "${tmpdir}/PKGBUILD" ]; then
+          current_pkgver="$(awk -F= '/^pkgver=/{print $2; exit}' "${tmpdir}/PKGBUILD")"
+          current_pkgrel="$(awk -F= '/^pkgrel=/{print $2; exit}' "${tmpdir}/PKGBUILD")"
+          if [ "${current_pkgver}" = "${VERSION}" ] && [[ "${current_pkgrel}" =~ ^[0-9]+$ ]]; then pkgrel="$((current_pkgrel + 1))"; fi
+        fi
+        cat > "${tmpdir}/PKGBUILD" <<EOF
+        # Maintainer: Aditya Hebballe <adityahebballe@proton.me>
+        pkgname=${AUR_PACKAGE}
+        _pkgname=harbor
+        pkgver=${VERSION}
+        pkgrel=${pkgrel}
+        pkgdesc='${package_desc}'
+        arch=('x86_64')
+        url='https://github.com/harborstremio/harbor'
+        license=('MIT')
+        depends=('ffmpeg' 'gst-libav' 'gst-plugins-bad' 'gst-plugins-good' 'gtk3' 'libayatana-appindicator' 'mpv' 'webkit2gtk-4.1' 'yt-dlp')
+        makedepends=('libarchive')
+        ${provides}
+        ${conflicts}
+        source=("Harbor_\${pkgver}-\${pkgrel}_amd64.deb::https://github.com/${REPOSITORY}/releases/download/${TAG}/${DEB_ASSET}")
+        sha256sums=('${DEB_SHA256}')
+        package() {
+          local extract="\$srcdir/deb-extract"
+          rm -rf "\$extract"; mkdir -p "\$extract"
+          bsdtar --no-same-owner -xf "\$srcdir/Harbor_\${pkgver}-\${pkgrel}_amd64.deb" -C "\$extract"
+          bsdtar --no-same-owner -xf "\$(find "\$extract" -maxdepth 1 -type f -name 'data.tar.*' -print -quit)" -C "\$pkgdir"
+          rm -f "\$pkgdir/usr/bin/ffmpeg" "\$pkgdir/usr/bin/ffprobe" "\$pkgdir/usr/bin/yt-dlp"
+          if [[ -x "\$pkgdir/usr/bin/harbor" && ! -e "\$pkgdir/usr/bin/harbor-stremio" ]]; then ln -s harbor "\$pkgdir/usr/bin/harbor-stremio"; fi
+        }
+        EOF
+        docker run --rm -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" -v "${tmpdir}:/workspace" -w /workspace archlinux:base-devel bash -lc 'set -euo pipefail; pacman -Syu --noconfirm libarchive; groupadd -g "$HOST_GID" builder || true; useradd -m -u "$HOST_UID" -g "$HOST_GID" builder; chown -R builder:"$HOST_GID" /workspace; runuser -u builder -- makepkg --printsrcinfo > .SRCINFO'
+        cd "${tmpdir}"
+        git add PKGBUILD .SRCINFO
+        if git diff --cached --quiet; then echo 'AUR already current.'; exit 0; fi
+        git config user.name 'Aditya Hebballe'
+        git config user.email 'adityahebballe@proton.me'
+        git commit -m "Update to ${VERSION}"
+        git push
