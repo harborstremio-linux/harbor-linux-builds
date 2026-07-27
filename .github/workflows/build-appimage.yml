@@ -117,9 +117,12 @@ jobs:
             cd "${tmpdir}"
             "${GITHUB_WORKSPACE}/${appimage}" --appimage-extract >/dev/null
           )
-          test -f "${tmpdir}/squashfs-root/usr/lib/gstreamer-1.0/libgstapp.so"
-          test -f "${tmpdir}/squashfs-root/usr/lib/gstreamer-1.0/libgstautodetect.so"
-          test -x "${tmpdir}/squashfs-root/usr/libexec/gstreamer-1.0/gst-plugin-scanner"
+          for required in libgstapp.so libgstautodetect.so gst-plugin-scanner; do
+            if ! find "${tmpdir}/squashfs-root/usr" -type f -name "${required}" -print -quit | grep -q .; then
+              echo "AppImage is missing required GStreamer component: ${required}" >&2
+              exit 1
+            fi
+          done
 
       - name: Collect AppImage artifacts
         env:
