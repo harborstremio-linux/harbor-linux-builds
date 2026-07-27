@@ -1,0 +1,110 @@
+name: Set up Harbor Linux build
+description: Check out a pinned Harbor revision and prepare its Linux build toolchain.
+
+inputs:
+  source_ref:
+    description: Immutable Harbor commit to build.
+    required: true
+  source_path:
+    description: Checkout directory.
+    required: false
+    default: harbor
+  include_gstreamer:
+    description: Install GStreamer packages required for AppImage media bundling.
+    required: false
+    default: "false"
+  include_rpm_tooling:
+    description: Install tooling required to build RPM bundles.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout Harbor
+      uses: actions/checkout@v7.0.0
+      with:
+        repository: harborstremio/harbor
+        ref: ${{ inputs.source_ref }}
+        path: ${{ inputs.source_path }}
+
+    - name: Install base Linux dependencies
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y ca-certificates ffmpeg libasound2-dev libayatana-appindicator3-dev libgtk-3-dev libmpv-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev patchelf pkg-config yt-dlp
+
+    - name: Install AppImage media dependencies
+      if: inputs.include_gstreamer == 'true'
+      shell: bash
+      run: sudo apt-get install -y gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
+
+    - name: Install RPM build dependencies
+      if: inputs.include_rpm_tooling == 'true'
+      shell: bash
+      run: sudo apt-get install -y libarchive-tools rpm xz-utils
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: x86_64-unknown-linux-gnu
+
+    - name: Install pnpm
+      uses: pnpm/action-setup@v6.0.9
+      with:
+        version: 11.9.0
+
+    - name: Install Node
+      uses: actions/setup-node@v6.4.0
+      with:
+        node-version: 22
+        cache: pnpm
+        cache-dependency-path: ${{ inputs.source_path }}/pnpm-lock.yaml
+
+    - name: Prepare workspace build policy
+      shell: bash
+      working-directory: ${{ inputs.source_path }}
+      run: |
+        node <<'EOF'
+        const fs = require('fs');
+        const workspacePath = 'pnpm-workspace.yaml';
+        let workspace = fs.readFileSync(workspacePath, 'utf8');
+        const setAllowBuild = (name, value) => {
+          const entry = new RegExp(`^(\\s*)${name}:.*$`, 'm');
+          if (entry.test(workspace)) {
+            workspace = workspace.replace(entry, `$1${name}: ${value}`);
+            return;
+          }
+          if (/^allowBuilds:\s*$/m.test(workspace)) {
+            workspace = workspace.replace(/^allowBuilds:\s*$/m, `allowBuilds:\n  ${name}: ${value}`);
+            return;
+          }
+          workspace += `${workspace.endsWith('\n') || !workspace ? '' : '\n'}allowBuilds:\n  ${name}: ${value}\n`;
+        };
+        setAllowBuild('esbuild', 'true');
+        setAllowBuild('protobufjs', 'false');
+        fs.writeFileSync(workspacePath, workspace);
+        EOF
+
+    - name: Install JavaScript dependencies
+      shell: bash
+      working-directory: ${{ inputs.source_path }}
+      run: |
+        pnpm install --lockfile-only --no-frozen-lockfile
+        pnpm install --frozen-lockfile
+
+    - name: Fetch bundled build assets
+      shell: bash
+      working-directory: ${{ inputs.source_path }}
+      run: |
+        set -euo pipefail
+        if node -e "process.exit(require('./package.json').scripts?.setup ? 0 : 1)"; then
+          pnpm run setup
+        else
+          if node -e "process.exit(require('./package.json').scripts?.['setup:fonts'] ? 0 : 1)"; then pnpm run setup:fonts; fi
+          mkdir -p src-tauri/binaries
+          ln -sf /usr/bin/ffmpeg src-tauri/binaries/ffmpeg-x86_64-unknown-linux-gnu
+          ln -sf /usr/bin/ffprobe src-tauri/binaries/ffprobe-x86_64-unknown-linux-gnu
+          ln -sf /usr/bin/yt-dlp src-tauri/binaries/yt-dlp-x86_64-unknown-linux-gnu
+        fi

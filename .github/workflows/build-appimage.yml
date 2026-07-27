@@ -17,7 +17,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: harbor-appimage-${{ inputs.tag }}
@@ -28,6 +28,11 @@ jobs:
     name: Build and attach AppImage
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    permissions:
+      contents: read
+    outputs:
+      source_ref: ${{ steps.source.outputs.source_ref }}
+      version: ${{ steps.package.outputs.version }}
     steps:
       - name: Verify target release
         env:
@@ -48,12 +53,14 @@ jobs:
           source_ref="$(gh api "repos/harborstremio/harbor/commits/${INPUT_SOURCE_REF}" --jq '.sha')"
           echo "source_ref=${source_ref}" >> "${GITHUB_OUTPUT}"
 
-      - name: Checkout Harbor
+      - name: Checkout packaging workflow
         uses: actions/checkout@v7.0.0
+
+      - name: Set up Harbor build
+        uses: ./.github/actions/setup-harbor-linux
         with:
-          repository: harborstremio/harbor
-          ref: ${{ steps.source.outputs.source_ref }}
-          path: harbor
+          source_ref: ${{ steps.source.outputs.source_ref }}
+          include_gstreamer: "true"
 
       - name: Resolve package version
         id: package
@@ -78,100 +85,17 @@ jobs:
           }
           '
 
-      - name: Install Linux dependencies
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y \
-            ca-certificates \
-            ffmpeg \
-            libasound2-dev \
-            libayatana-appindicator3-dev \
-            libgtk-3-dev \
-            libmpv-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libwebkit2gtk-4.1-dev \
-            patchelf \
-            pkg-config \
-            gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good \
-            gstreamer1.0-plugins-bad \
-            gstreamer1.0-libav \
-            yt-dlp
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-gnu
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6.0.9
-        with:
-          version: 11.9.0
-
-      - name: Install Node
-        uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: harbor/pnpm-lock.yaml
-
-      - name: Prepare AppImage build
+      - name: Disable updater artifacts
         working-directory: harbor
         run: |
-          set -euo pipefail
-
-          node <<'EOF'
-          const fs = require('fs');
-          const tauriConfigPath = 'src-tauri/tauri.conf.json';
-          const config = JSON.parse(fs.readFileSync(tauriConfigPath, 'utf8'));
+          node -e '
+          const fs = require("fs");
+          const path = "src-tauri/tauri.conf.json";
+          const config = JSON.parse(fs.readFileSync(path, "utf8"));
           config.bundle.createUpdaterArtifacts = false;
-          fs.writeFileSync(tauriConfigPath, `${JSON.stringify(config, null, 2)}\n`);
-
-          const workspacePath = 'pnpm-workspace.yaml';
-          let workspace = fs.existsSync(workspacePath)
-            ? fs.readFileSync(workspacePath, 'utf8')
-            : '';
-          const setAllowBuild = (name, value) => {
-            const entry = new RegExp(`^(\\s*)${name}:.*$`, 'm');
-            if (entry.test(workspace)) {
-              workspace = workspace.replace(entry, `$1${name}: ${value}`);
-              return;
-            }
-            if (/^allowBuilds:\s*$/m.test(workspace)) {
-              workspace = workspace.replace(/^allowBuilds:\s*$/m, `allowBuilds:\n  ${name}: ${value}`);
-              return;
-            }
-            workspace += `${workspace.endsWith('\n') || !workspace ? '' : '\n'}allowBuilds:\n  ${name}: ${value}\n`;
-          };
-          setAllowBuild('esbuild', 'true');
-          setAllowBuild('protobufjs', 'false');
-          fs.writeFileSync(workspacePath, workspace);
-          EOF
-
-      - name: Install JavaScript dependencies
-        working-directory: harbor
-        run: |
-          pnpm install --lockfile-only --no-frozen-lockfile
-          pnpm install --frozen-lockfile
-
-      - name: Fetch bundled build assets
-        working-directory: harbor
-        run: |
-          set -euo pipefail
-
-          if node -e "process.exit(require('./package.json').scripts?.setup ? 0 : 1)"; then
-            pnpm run setup
-          else
-            if node -e "process.exit(require('./package.json').scripts?.['setup:fonts'] ? 0 : 1)"; then
-              pnpm run setup:fonts
-            fi
-            mkdir -p src-tauri/binaries
-            ln -sf /usr/bin/ffmpeg src-tauri/binaries/ffmpeg-x86_64-unknown-linux-gnu
-            ln -sf /usr/bin/ffprobe src-tauri/binaries/ffprobe-x86_64-unknown-linux-gnu
-            ln -sf /usr/bin/yt-dlp src-tauri/binaries/yt-dlp-x86_64-unknown-linux-gnu
-          fi
+          fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\\n`);
+          '
 
       - name: Build AppImage
         working-directory: harbor
@@ -197,11 +121,8 @@ jobs:
           test -f "${tmpdir}/squashfs-root/usr/lib/gstreamer-1.0/libgstautodetect.so"
           test -x "${tmpdir}/squashfs-root/usr/libexec/gstreamer-1.0/gst-plugin-scanner"
 
-      - name: Attach AppImage to release
+      - name: Collect AppImage artifacts
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          TAG: ${{ inputs.tag }}
           VERSION: ${{ steps.package.outputs.version }}
         run: |
           set -euo pipefail
@@ -211,6 +132,35 @@ jobs:
             exit 1
           fi
           asset="Harbor_${VERSION}_x86_64.AppImage"
-          cp "${appimage}" "${asset}"
-          sha256sum "${asset}" > "${asset}.sha256"
-          gh release upload "${TAG}" "${asset}" "${asset}.sha256" --repo "${REPOSITORY}" --clobber
+          mkdir dist
+          cp "${appimage}" "dist/${asset}"
+          sha256sum "dist/${asset}" > "dist/${asset}.sha256"
+          jq -n --arg source_ref "${{ steps.source.outputs.source_ref }}" --arg version "${VERSION}" --arg asset "${asset}" --arg sha256 "$(sha256sum "dist/${asset}" | awk '{print $1}')" '{source_ref: $source_ref, version: $version, artifacts: [{name: $asset, sha256: $sha256}]}' > dist/build-manifest.json
+
+      - name: Upload AppImage artifacts
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: appimage-${{ steps.package.outputs.version }}
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Attach AppImage to release
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Download AppImage artifacts
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: appimage-${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Attach AppImage to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: gh release upload "${TAG}" dist/* --repo "${REPOSITORY}" --clobber

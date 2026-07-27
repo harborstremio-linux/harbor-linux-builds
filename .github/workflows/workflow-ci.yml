@@ -1,0 +1,19 @@
+name: Validate workflows
+
+on:
+  pull_request:
+    paths: [.github/actions/**, .github/workflows/**]
+  push:
+    branches: [main]
+    paths: [.github/actions/**, .github/workflows/**]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - run: sudo apt-get update && sudo apt-get install -y actionlint shellcheck
+      - run: actionlint
