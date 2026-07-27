@@ -101,6 +101,46 @@ jobs:
         working-directory: harbor
         run: pnpm tauri build --target x86_64-unknown-linux-gnu --bundles appimage
 
+      - name: Strip conflicting graphics libraries from AppImage
+        run: |
+          set -euo pipefail
+
+          appimage="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          if [ -z "${appimage}" ]; then
+            echo "No AppImage bundle was produced" >&2
+            exit 1
+          fi
+          appimage="$(realpath "${appimage}")"
+
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "${tmpdir}"' EXIT
+          (
+            cd "${tmpdir}"
+            "${appimage}" --appimage-extract >/dev/null
+
+            # linuxdeploy bundles Ubuntu's GLVND and Wayland clients with the
+            # GStreamer runtime. Those libraries conflict with Mesa on Arch,
+            # Fedora, and NixOS, making WebKit abort with EGL_BAD_PARAMETER.
+            # Every supported desktop distro supplies this graphics stack.
+            find squashfs-root \( -type f -o -type l \) \( \
+              -name 'libGL.so*' -o \
+              -name 'libEGL.so*' -o \
+              -name 'libGLX.so*' -o \
+              -name 'libGLdispatch.so*' -o \
+              -name 'libgbm.so*' -o \
+              -name 'libwayland-egl.so*' -o \
+              -name 'libwayland-client.so*' -o \
+              -name 'libwayland-server.so*' \
+              \) -print -delete
+
+            curl --fail --location --retry 3 --retry-all-errors \
+              --output appimagetool \
+              'https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage'
+            chmod +x appimagetool
+            rm -f "${appimage}"
+            APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 ./appimagetool --no-appstream squashfs-root "${appimage}"
+          )
+
       - name: Validate AppImage media framework
         run: |
           set -euo pipefail
@@ -123,6 +163,19 @@ jobs:
               exit 1
             fi
           done
+          if find "${tmpdir}/squashfs-root" \( -type f -o -type l \) \( \
+            -name 'libGL.so*' -o \
+            -name 'libEGL.so*' -o \
+            -name 'libGLX.so*' -o \
+            -name 'libGLdispatch.so*' -o \
+            -name 'libgbm.so*' -o \
+            -name 'libwayland-egl.so*' -o \
+            -name 'libwayland-client.so*' -o \
+            -name 'libwayland-server.so*' \
+            \) -print -quit | grep -q .; then
+            echo "AppImage still contains bundled graphics libraries" >&2
+            exit 1
+          fi
 
       - name: Collect AppImage artifacts
         env:
