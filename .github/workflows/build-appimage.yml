@@ -140,6 +140,24 @@ jobs:
             # desktop distro provides the host library for shell utilities.
             find squashfs-root -type f -name 'libreadline.so*' -print -delete
 
+            # libmpv and FFmpeg stay bundled, but their TLS/HTTP stack must use
+            # the host libraries. Bundling Ubuntu's GnuTLS/OpenSSL dependency
+            # chain can reset streams on other distros even though the player
+            # and codecs are otherwise portable.
+            find squashfs-root/usr/lib -maxdepth 1 -type f \( \
+              -name 'libgnutls.so*' -o \
+              -name 'libssl.so*' -o \
+              -name 'libcrypto.so*' -o \
+              -name 'libnghttp2.so*' -o \
+              -name 'libp11-kit.so*' -o \
+              -name 'libidn2.so*' -o \
+              -name 'libunistring.so*' -o \
+              -name 'libtasn1.so*' -o \
+              -name 'libnettle.so*' -o \
+              -name 'libhogweed.so*' -o \
+              -name 'libffi.so*' \
+              \) -print -delete
+
             curl --fail --location --retry 3 --retry-all-errors \
               --output appimagetool \
               'https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage'
@@ -185,6 +203,22 @@ jobs:
           fi
           if find "${tmpdir}/squashfs-root" -type f -name 'libreadline.so*' -print -quit | grep -q .; then
             echo "AppImage still contains bundled libreadline" >&2
+            exit 1
+          fi
+          if find "${tmpdir}/squashfs-root/usr/lib" -maxdepth 1 -type f \( \
+            -name 'libgnutls.so*' -o \
+            -name 'libssl.so*' -o \
+            -name 'libcrypto.so*' -o \
+            -name 'libnghttp2.so*' -o \
+            -name 'libp11-kit.so*' -o \
+            -name 'libidn2.so*' -o \
+            -name 'libunistring.so*' -o \
+            -name 'libtasn1.so*' -o \
+            -name 'libnettle.so*' -o \
+            -name 'libhogweed.so*' -o \
+            -name 'libffi.so*' \
+            \) -print -quit | grep -q .; then
+            echo "AppImage still contains bundled TLS or HTTP libraries" >&2
             exit 1
           fi
 
