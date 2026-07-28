@@ -500,3 +500,48 @@ jobs:
       tag: ${{ needs.resolve.outputs.tag }}
       version: ${{ needs.resolve.outputs.version }}
       channel: ${{ needs.resolve.outputs.channel }}
+
+  publish-flatpak:
+    name: Publish Flatpak bundle
+    needs: [resolve, publish, flatpak]
+    if: needs.resolve.outputs.contains_linux_fix == 'true' && needs.resolve.outputs.should_build == 'true'
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout packaging workflow
+        uses: actions/checkout@v7.0.0
+
+      - name: Download Flatpak bundle
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: flatpak-bundle-${{ needs.resolve.outputs.version }}
+          path: dist
+
+      - name: Download refreshed Flatpak sources
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: flatpak-sources-${{ needs.resolve.outputs.version }}
+          path: flatpak-artifact
+
+      - name: Persist downstream Flatpak sources
+        run: |
+          set -euo pipefail
+          rsync -a --delete flatpak-artifact/ flatpak/
+          git add flatpak
+          if git diff --cached --quiet; then
+            echo "Downstream Flatpak sources are already current."
+            exit 0
+          fi
+          git config user.name "Aditya Hebballe"
+          git config user.email "45328110+AdityaHebballe@users.noreply.github.com"
+          git commit -m "build(flatpak): sync ${{ needs.resolve.outputs.version }}"
+          git push origin HEAD:main
+
+      - name: Publish Flatpak bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: gh release upload "${TAG}" dist/* --repo "${REPOSITORY}" --clobber
