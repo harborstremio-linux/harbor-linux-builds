@@ -200,11 +200,20 @@ jobs:
             /tmp/harbor-flatpak-validation-repo \
             "Harbor_${VERSION}_x86_64.flatpak"
 
+      - name: Create Flatpak checksum
+        env:
+          VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          set -euo pipefail
+          sha256sum "Harbor_${VERSION}_x86_64.flatpak" > "SHA256SUMS-${VERSION}.txt"
+
       - name: Upload Flatpak bundle artifact
         uses: actions/upload-artifact@v7.0.0
         with:
           name: flatpak-bundle-${{ steps.package.outputs.version }}
-          path: Harbor_${{ steps.package.outputs.version }}_x86_64.flatpak
+          path: |
+            Harbor_${{ steps.package.outputs.version }}_x86_64.flatpak
+            SHA256SUMS-${{ steps.package.outputs.version }}.txt
           if-no-files-found: error
 
       - name: Upload refreshed Flatpak sources
