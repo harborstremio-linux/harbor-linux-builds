@@ -97,6 +97,6 @@ The stable and beta AUR packages conflict: they install the same Harbor applicat
 
 ## How it works
 
-Stable releases track upstream Harbor release tags. Beta releases track an exact commit from `beta-branch`. New releases provide `.deb`, `.rpm`, Flatpak, and an experimental AppImage bundle. Flatpak and AppImage build separately, so either can fail without blocking the core packages or the AUR update.
+Beta is the primary channel. Each beta release is built from an exact `beta-branch` commit and published once per Harbor version; later commits with the same version do not create another release. Stable releases follow upstream Harbor release tags and can be behind beta. Releases provide `.deb`, `.rpm`, Flatpak, and an experimental AppImage bundle. Flatpak and AppImage build separately, so either can fail without blocking the core packages or the AUR update.
 
-These are community-maintained builds, not binaries published by the upstream Harbor project. The workflow and exact upstream source ref for each build are visible in the [Actions tab](https://github.com/AdityaHebballe/harbor-linux-builds/actions).
+These are community-maintained builds, not binaries published by the upstream Harbor project. The workflow and exact upstream source ref for each build are visible in the [Actions tab](https://github.com/harborstremio-linux/harbor-linux-builds/actions).
