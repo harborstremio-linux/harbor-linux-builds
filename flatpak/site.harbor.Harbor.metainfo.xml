@@ -21,6 +21,6 @@
   <url type="bugtracker">https://github.com/harborstremio/harbor/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
-    <release version="0.9.114" date="2026-07-26" />
+    <release version="0.9.115" date="2026-07-28" />
   </releases>
 </component>
