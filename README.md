@@ -3,14 +3,14 @@
 Unofficial Linux builds of [Harbor](https://github.com/harborstremio/harbor), built from its upstream source tags by GitHub Actions.
 
 <p align="center">
-  <a href="https://github.com/AdityaHebballe/harbor-linux-builds/releases/latest"><strong>Download stable</strong></a>
-  ·
   <a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115"><strong>Download beta</strong></a>
+  ·
+  <a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/latest"><strong>Download stable</strong></a>
   ·
   <a href="https://github.com/harborstremio/harbor"><strong>Harbor upstream</strong></a>
 </p>
 
-> **x86_64 only.** Choose the package that fits your distribution below. Every stable download is on the [latest release](https://github.com/AdityaHebballe/harbor-linux-builds/releases/latest).
+> **x86_64 only.** Choose the package that fits your distribution below. Every package download below follows the current [beta release](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115).
 
 <table>
   <tr>
@@ -28,7 +28,7 @@ Unofficial Linux builds of [Harbor](https://github.com/harborstremio/harbor), bu
         <img src="https://cdn.simpleicons.org/linuxmint/87CF3E" width="20" height="20" align="absmiddle" alt="" />
         Debian, Ubuntu &amp; Mint
       </h3>
-      <p><a href="https://github.com/AdityaHebballe/harbor-linux-builds/releases/latest"><strong>Download the latest .deb →</strong></a></p>
+      <p><a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115"><strong>Download the latest .deb →</strong></a></p>
       <pre><code>cd ~/Downloads
 sudo apt install ./Harbor_*.deb</code></pre>
     </td>
@@ -40,7 +40,7 @@ sudo apt install ./Harbor_*.deb</code></pre>
         <img src="https://cdn.simpleicons.org/opensuse/73BA25" width="20" height="20" align="absmiddle" alt="" />
         Fedora &amp; openSUSE
       </h3>
-      <p><a href="https://github.com/AdityaHebballe/harbor-linux-builds/releases/latest"><strong>Download the latest .rpm →</strong></a></p>
+      <p><a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115"><strong>Download the latest .rpm →</strong></a></p>
       <p><strong>Fedora</strong></p>
       <pre><code>sudo dnf install ./Harbor-*.rpm</code></pre>
       <p><strong>openSUSE</strong></p>
@@ -48,7 +48,7 @@ sudo apt install ./Harbor_*.deb</code></pre>
     </td>
     <td width="50%" valign="top">
       <h3><img src="https://cdn.simpleicons.org/flatpak/4A90D9" width="20" height="20" align="absmiddle" alt="" /> Flatpak</h3>
-      <p><a href="https://github.com/AdityaHebballe/harbor-linux-builds/releases/latest"><strong>Download the latest .flatpak →</strong></a></p>
+      <p><a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115"><strong>Download the latest .flatpak →</strong></a></p>
       <pre><code>cd ~/Downloads
 flatpak install --user ./Harbor_*.flatpak</code></pre>
     </td>
@@ -56,7 +56,7 @@ flatpak install --user ./Harbor_*.flatpak</code></pre>
   <tr>
     <td width="50%" valign="top">
       <h3><img src="https://avatars.githubusercontent.com/u/16617932?s=200&amp;v=4" width="20" height="20" align="absmiddle" alt="" /> AppImage <small>(experimental)</small></h3>
-      <h4><a href="https://github.com/AdityaHebballe/harbor-linux-builds/releases/latest">Download the latest .AppImage →</a></h4>
+      <h4><a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115">Download the latest .AppImage →</a></h4>
       <pre><code>cd ~/Downloads
 chmod +x Harbor_*.AppImage
 ./Harbor_*.AppImage</code></pre>
@@ -74,7 +74,7 @@ chmod +x Harbor_*.AppImage
 
 ## Verify a download
 
-Each release includes a SHA-256 checksum file for the core package assets. [Get SHA256SUMS from the latest release →](https://github.com/AdityaHebballe/harbor-linux-builds/releases/latest)
+Each release includes a SHA-256 checksum file for the core package assets. [Get SHA256SUMS from the current beta →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
 
 ```bash
 sha256sum -c SHA256SUMS-*.txt

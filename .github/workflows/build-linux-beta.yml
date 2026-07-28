@@ -71,7 +71,7 @@ jobs:
     secrets: inherit
 
   update-readme:
-    name: Update beta download link
+    name: Update primary beta download links
     needs: [resolve, build]
     if: always() && needs.resolve.result == 'success'
     runs-on: ubuntu-24.04
@@ -107,7 +107,7 @@ jobs:
           );
 
           if (!linkPattern.test(readme)) {
-            throw new Error("No beta release links found in README.md");
+            throw new Error("No primary beta release links found in README.md");
           }
 
           const updatedReadme = readme.replace(linkPattern, releaseUrl);
