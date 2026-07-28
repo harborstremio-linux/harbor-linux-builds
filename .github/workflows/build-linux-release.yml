@@ -537,6 +537,7 @@ jobs:
           git config user.name "Aditya Hebballe"
           git config user.email "45328110+AdityaHebballe@users.noreply.github.com"
           git commit -m "build(flatpak): sync ${{ needs.resolve.outputs.version }}"
+          git pull --rebase origin main
           git push origin HEAD:main
 
       - name: Publish Flatpak bundle
