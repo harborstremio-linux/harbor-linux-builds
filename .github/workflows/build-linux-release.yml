@@ -141,7 +141,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout packaging workflow
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up Harbor build
         uses: ./.github/actions/setup-harbor-linux
@@ -228,199 +228,11 @@ jobs:
           ls -lh
 
       - name: Upload Linux bundles
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: linux-bundles-${{ needs.resolve.outputs.version }}
           path: dist/
           if-no-files-found: error
-
-      - name: Publish release
-        if: false
-        uses: softprops/action-gh-release@v3.0.1
-        with:
-          tag_name: ${{ needs.resolve.outputs.tag }}
-          name: Harbor Linux ${{ needs.resolve.outputs.tag }}
-          body: |
-            Unofficial ${{ needs.resolve.outputs.channel }} Linux build of Harbor.
-
-            Source: https://github.com/harborstremio/harbor/tree/${{ needs.resolve.outputs.source_ref }}
-
-            These binaries are built by this repository's GitHub Actions workflow, not by upstream Harbor.
-          files: dist/*
-          fail_on_unmatched_files: true
-          make_latest: ${{ needs.resolve.outputs.channel == 'stable' }}
-          prerelease: ${{ needs.resolve.outputs.channel == 'beta' }}
-          overwrite_files: true
-
-      - name: Verify published Debian asset
-        if: false
-        id: published_deb
-        env:
-          DEB_ASSET: ${{ steps.artifacts.outputs.deb_asset }}
-          EXPECTED_SHA256: ${{ steps.artifacts.outputs.deb_sha256 }}
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          TAG: ${{ needs.resolve.outputs.tag }}
-        run: |
-          set -euo pipefail
-
-          tmpdir="$(mktemp -d)"
-          trap 'rm -rf "${tmpdir}"' EXIT
-          gh release download "${TAG}" \
-            --repo "${REPOSITORY}" \
-            --pattern "${DEB_ASSET}" \
-            --dir "${tmpdir}"
-
-          published_sha256="$(sha256sum "${tmpdir}/${DEB_ASSET}" | awk '{print $1}')"
-          if [ "${published_sha256}" != "${EXPECTED_SHA256}" ]; then
-            echo "Published Debian asset does not match the built artifact." >&2
-            echo "Expected:  ${EXPECTED_SHA256}" >&2
-            echo "Published: ${published_sha256}" >&2
-            exit 1
-          fi
-
-          echo "sha256=${published_sha256}" >> "${GITHUB_OUTPUT}"
-
-      - name: Configure AUR SSH
-        if: false
-        env:
-          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${AUR_SSH_PRIVATE_KEY}" ]; then
-            echo "AUR_SSH_PRIVATE_KEY is not set." >&2
-            exit 1
-          fi
-
-          mkdir -p ~/.ssh
-          install -m 600 /dev/null ~/.ssh/aur
-          printf '%s\n' "${AUR_SSH_PRIVATE_KEY}" > ~/.ssh/aur
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
-          cat > ~/.ssh/config <<'EOF'
-          Host aur.archlinux.org
-            HostName aur.archlinux.org
-            User aur
-            IdentityFile ~/.ssh/aur
-            IdentitiesOnly yes
-          EOF
-
-      - name: Update AUR package
-        if: false
-        env:
-          VERSION: ${{ needs.resolve.outputs.version }}
-          TAG: ${{ needs.resolve.outputs.tag }}
-          CHANNEL: ${{ needs.resolve.outputs.channel }}
-          AUR_PACKAGE: ${{ needs.resolve.outputs.aur_package }}
-          DEB_ASSET: ${{ steps.artifacts.outputs.deb_asset }}
-          DEB_SHA256: ${{ steps.published_deb.outputs.sha256 }}
-        run: |
-          set -euo pipefail
-
-          tmpdir="$(mktemp -d)"
-          git clone "ssh://aur@aur.archlinux.org/${AUR_PACKAGE}.git" "${tmpdir}"
-
-          if [ "${CHANNEL}" = "beta" ]; then
-            package_desc='A Stremio client built for adventure (beta binary release)'
-            package_provides="provides=('harbor-stremio-beta' 'harbor')"
-            package_conflicts="conflicts=('harbor-stremio-bin' 'harbor-stremio' 'harbor' 'harbor-stremio-git')"
-          else
-            package_desc='A Stremio client built for adventure (binary release)'
-            package_provides="provides=('harbor-stremio' 'harbor')"
-            package_conflicts="conflicts=('harbor-stremio' 'harbor' 'harbor-stremio-git')"
-          fi
-
-          pkgrel=1
-          if [ -f "${tmpdir}/PKGBUILD" ]; then
-            current_pkgver="$(awk -F= '/^pkgver=/{print $2; exit}' "${tmpdir}/PKGBUILD")"
-            current_pkgrel="$(awk -F= '/^pkgrel=/{print $2; exit}' "${tmpdir}/PKGBUILD")"
-            if [ "${current_pkgver}" = "${VERSION}" ] && echo "${current_pkgrel}" | grep -Eq '^[0-9]+$'; then
-              pkgrel="$((current_pkgrel + 1))"
-            fi
-          fi
-
-          cat > "${tmpdir}/PKGBUILD" <<EOF
-          # Maintainer: Aditya Hebballe <adityahebballe@proton.me>
-
-          pkgname=${AUR_PACKAGE}
-          _pkgname=harbor
-          pkgver=${VERSION}
-          pkgrel=${pkgrel}
-          pkgdesc='${package_desc}'
-          arch=('x86_64')
-          url='https://github.com/harborstremio/harbor'
-          license=('MIT')
-
-          depends=(
-            'ffmpeg'
-            'gst-libav'
-            'gst-plugins-bad'
-            'gst-plugins-good'
-            'gtk3'
-            'libayatana-appindicator'
-            'mpv'
-            'webkit2gtk-4.1'
-            'yt-dlp'
-          )
-
-          makedepends=('libarchive')
-
-          ${package_provides}
-          ${package_conflicts}
-
-          source=("Harbor_\${pkgver}-\${pkgrel}_amd64.deb::https://github.com/AdityaHebballe/harbor-linux-builds/releases/download/${TAG}/${DEB_ASSET}")
-          sha256sums=('${DEB_SHA256}')
-
-          package() {
-            rm -rf "\$srcdir/deb-extract"
-            mkdir -p "\$srcdir/deb-extract"
-            bsdtar --no-same-owner -xf "\$srcdir/Harbor_\${pkgver}-\${pkgrel}_amd64.deb" -C "\$srcdir/deb-extract"
-
-            local data_archive
-            data_archive="\$(find "\$srcdir/deb-extract" -maxdepth 1 -type f -name 'data.tar.*' | head -n 1)"
-            if [[ -z "\$data_archive" ]]; then
-              echo "Debian data archive not found" >&2
-              return 1
-            fi
-
-            bsdtar --no-same-owner -xf "\$data_archive" -C "\$pkgdir"
-
-            rm -f "\$pkgdir/usr/bin/ffmpeg" \\
-                  "\$pkgdir/usr/bin/ffprobe" \\
-                  "\$pkgdir/usr/bin/yt-dlp"
-
-            if [[ -x "\$pkgdir/usr/bin/harbor" && ! -e "\$pkgdir/usr/bin/harbor-stremio" ]]; then
-              ln -s harbor "\$pkgdir/usr/bin/harbor-stremio"
-            fi
-          }
-          EOF
-
-          docker run --rm \
-            -e HOST_UID="$(id -u)" \
-            -e HOST_GID="$(id -g)" \
-            -v "${tmpdir}:/workspace" \
-            -w /workspace \
-            archlinux:base-devel \
-            bash -lc '
-              set -euo pipefail
-              pacman -Syu --noconfirm libarchive
-              groupadd -g "$HOST_GID" builder || true
-              useradd -m -u "$HOST_UID" -g "$HOST_GID" builder
-              chown -R builder:"$HOST_GID" /workspace
-              runuser -u builder -- makepkg --printsrcinfo > .SRCINFO
-            '
-
-          cd "${tmpdir}"
-          git add PKGBUILD .SRCINFO
-          if git diff --cached --quiet; then
-            echo "AUR already current."
-            exit 0
-          fi
-
-          git config user.name "Aditya Hebballe"
-          git config user.email "adityahebballe@proton.me"
-          git commit -m "Update to ${VERSION}"
-          git push
 
   publish:
     name: Publish Linux bundles
@@ -432,10 +244,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout packaging workflow
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Download Linux bundles
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: linux-bundles-${{ needs.resolve.outputs.version }}
           path: dist
@@ -506,21 +318,24 @@ jobs:
     needs: [resolve, publish, flatpak]
     if: needs.resolve.outputs.contains_linux_fix == 'true' && needs.resolve.outputs.should_build == 'true'
     runs-on: ubuntu-24.04
+    concurrency:
+      group: harbor-release-assets-${{ needs.resolve.outputs.tag }}
+      cancel-in-progress: false
     environment: release
     permissions:
       contents: write
     steps:
       - name: Checkout packaging workflow
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Download Flatpak bundle
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: flatpak-bundle-${{ needs.resolve.outputs.version }}
           path: dist
 
       - name: Download refreshed Flatpak sources
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: flatpak-sources-${{ needs.resolve.outputs.version }}
           path: flatpak-artifact
@@ -574,12 +389,15 @@ jobs:
     needs: [resolve, publish, appimage]
     if: needs.resolve.outputs.contains_linux_fix == 'true' && needs.resolve.outputs.should_build == 'true'
     runs-on: ubuntu-24.04
+    concurrency:
+      group: harbor-release-assets-${{ needs.resolve.outputs.tag }}
+      cancel-in-progress: false
     environment: release
     permissions:
       contents: write
     steps:
       - name: Download AppImage artifacts
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: appimage-${{ needs.resolve.outputs.version }}
           path: dist

@@ -100,13 +100,13 @@ jobs:
           echo "source_ref=${source_ref}" >> "${GITHUB_OUTPUT}"
 
       - name: Checkout downstream Flatpak configuration
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: main
           path: packaging
 
       - name: Checkout Harbor
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: harborstremio/harbor
           ref: ${{ steps.source.outputs.source_ref }}
@@ -213,14 +213,14 @@ jobs:
             "Harbor_${VERSION}_x86_64.flatpak"
 
       - name: Upload Flatpak bundle artifact
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: flatpak-bundle-${{ steps.package.outputs.version }}
           path: Harbor_${{ steps.package.outputs.version }}_x86_64.flatpak
           if-no-files-found: error
 
       - name: Upload refreshed Flatpak sources
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: flatpak-sources-${{ steps.package.outputs.version }}
           path: harbor/flatpak/
@@ -231,11 +231,14 @@ jobs:
     needs: build
     if: inputs.publish_release
     runs-on: ubuntu-24.04
+    concurrency:
+      group: harbor-release-assets-${{ inputs.tag }}
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
       - name: Download Flatpak bundle
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: flatpak-bundle-${{ needs.build.outputs.version }}
           path: dist
