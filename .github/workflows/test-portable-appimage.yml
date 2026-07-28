@@ -34,15 +34,17 @@ jobs:
           npm install --global pnpm@11.9.0
 
       - name: Checkout Harbor source
+        uses: actions/checkout@v7.0.0
+        with:
+          repository: harborstremio/harbor
+          ref: ${{ inputs.source_ref }}
+          path: harbor
+          fetch-depth: 1
+
+      - name: Resolve Harbor source commit
         id: source
-        env:
-          INPUT_SOURCE_REF: ${{ inputs.source_ref }}
         run: |
           set -euo pipefail
-          git init harbor
-          git -C harbor remote add origin https://github.com/harborstremio/harbor.git
-          git -C harbor fetch --depth 1 origin "${INPUT_SOURCE_REF}"
-          git -C harbor checkout --detach FETCH_HEAD
           echo "source_ref=$(git -C harbor rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
 
       - name: Prepare Harbor workspace
