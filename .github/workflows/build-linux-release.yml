@@ -557,3 +557,53 @@ jobs:
           sha256sum "dist/${asset}" >> "${tmpfile}"
           sort -k 2,2 "${tmpfile}" > "dist/${checksums}"
           gh release upload "${TAG}" dist/* --repo "${REPOSITORY}" --clobber
+
+  appimage:
+    name: Build experimental AppImage
+    needs: [resolve, publish]
+    if: needs.resolve.outputs.contains_linux_fix == 'true' && needs.resolve.outputs.should_build == 'true'
+    uses: ./.github/workflows/build-appimage.yml
+    with:
+      source_ref: ${{ needs.resolve.outputs.source_ref }}
+      tag: ${{ needs.resolve.outputs.tag }}
+      version: ${{ needs.resolve.outputs.version }}
+      channel: ${{ needs.resolve.outputs.channel }}
+
+  publish-appimage:
+    name: Publish experimental AppImage
+    needs: [resolve, publish, appimage]
+    if: needs.resolve.outputs.contains_linux_fix == 'true' && needs.resolve.outputs.should_build == 'true'
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Download AppImage artifacts
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: appimage-${{ needs.resolve.outputs.version }}
+          path: dist
+
+      - name: Append AppImage checksums and publish assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          checksums="SHA256SUMS-${VERSION}.txt"
+          gh release download "${TAG}" --repo "${REPOSITORY}" --pattern "${checksums}" --dir dist
+
+          tmpfile="$(mktemp)"
+          trap 'rm -f "${tmpfile}"' EXIT
+          grep -v -E '  Harbor_.*_amd64\.AppImage(\.zsync)?$' "dist/${checksums}" > "${tmpfile}" || true
+          sha256sum dist/*.AppImage dist/*.AppImage.zsync >> "${tmpfile}"
+          sort -k 2,2 "${tmpfile}" > "dist/${checksums}"
+
+          gh release upload "${TAG}" \
+            dist/*.AppImage \
+            dist/*.AppImage.zsync \
+            "dist/${checksums}" \
+            --repo "${REPOSITORY}" \
+            --clobber

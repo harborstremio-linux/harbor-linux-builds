@@ -53,6 +53,18 @@ sudo apt install ./Harbor_*.deb</code></pre>
 flatpak install --user ./Harbor_*.flatpak</code></pre>
     </td>
   </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>AppImage <small>(experimental)</small></h3>
+      <p>A portable build for most x86_64 Linux distributions. Built with Tauri's experimental portable AppImage bundler while <a href="https://github.com/tauri-apps/tauri/pull/12491">upstream PR #12491</a> is awaiting merge.</p>
+      <p><a href="https://github.com/AdityaHebballe/harbor-linux-builds/releases/latest"><strong>Download the latest .AppImage →</strong></a></p>
+      <pre><code>cd ~/Downloads
+chmod +x Harbor_*.AppImage
+./Harbor_*.AppImage</code></pre>
+      <p><sub><a href="https://github.com/mijorus/gearlever">Gear Lever</a> can integrate it and discover updates.</sub></p>
+    </td>
+    <td width="50%" valign="top"></td>
+  </tr>
 </table>
 
 ## Verify a download
@@ -78,6 +90,6 @@ The stable and beta AUR packages conflict: they install the same Harbor applicat
 
 ## How it works
 
-Stable releases track upstream Harbor release tags. Beta releases track an exact commit from `beta-branch`. New releases provide `.deb`, `.rpm`, and Flatpak bundles; Flatpak is built separately so its failure never blocks the other packages or the AUR update.
+Stable releases track upstream Harbor release tags. Beta releases track an exact commit from `beta-branch`. New releases provide `.deb`, `.rpm`, Flatpak, and an experimental AppImage bundle. Flatpak and AppImage build separately, so either can fail without blocking the core packages or the AUR update.
 
 These are community-maintained builds, not binaries published by the upstream Harbor project. The workflow and exact upstream source ref for each build are visible in the [Actions tab](https://github.com/AdityaHebballe/harbor-linux-builds/actions).

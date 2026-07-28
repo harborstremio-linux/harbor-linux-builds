@@ -1,6 +1,24 @@
 name: Build Harbor AppImage
 
 on:
+  workflow_call:
+    inputs:
+      source_ref:
+        description: Immutable Harbor commit to build.
+        required: true
+        type: string
+      tag:
+        description: Release tag that will receive the generated assets.
+        required: true
+        type: string
+      version:
+        description: Harbor package version.
+        required: true
+        type: string
+      channel:
+        description: Release channel.
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       source_ref:
@@ -8,13 +26,21 @@ on:
         required: true
         type: string
       tag:
-        description: Existing release tag to receive the AppImage.
+        description: Release tag that will receive the generated assets.
         required: true
         type: string
       version:
         description: Harbor package version. Leave blank to read it from the source ref.
         required: false
         type: string
+      channel:
+        description: Release channel.
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - beta
 
 permissions:
   contents: read
@@ -25,44 +51,36 @@ concurrency:
 
 jobs:
   build:
-    name: Build and attach AppImage
+    name: Build experimental portable AppImage on Arch
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    permissions:
-      contents: read
+    container: archlinux:base-devel
+    timeout-minutes: 150
     outputs:
-      source_ref: ${{ steps.source.outputs.source_ref }}
+      source_ref: ${{ steps.package.outputs.source_ref }}
       version: ${{ steps.package.outputs.version }}
     steps:
-      - name: Verify target release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          TAG: ${{ inputs.tag }}
-        run: |
-          set -euo pipefail
-          gh release view "${TAG}" --repo "${REPOSITORY}" >/dev/null
-
-      - name: Resolve upstream source ref
-        id: source
-        env:
-          GH_TOKEN: ${{ github.token }}
-          INPUT_SOURCE_REF: ${{ inputs.source_ref }}
-        run: |
-          set -euo pipefail
-          source_ref="$(gh api "repos/harborstremio/harbor/commits/${INPUT_SOURCE_REF}" --jq '.sha')"
-          echo "source_ref=${source_ref}" >> "${GITHUB_OUTPUT}"
-
       - name: Checkout packaging workflow
         uses: actions/checkout@v7.0.0
 
-      - name: Set up Harbor build
-        uses: ./.github/actions/setup-harbor-linux
-        with:
-          source_ref: ${{ steps.source.outputs.source_ref }}
-          include_gstreamer: "true"
+      - name: Install Arch build dependencies
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm --needed \
+            alsa-lib base-devel ca-certificates curl ffmpeg git gstreamer \
+            gst-libav gst-plugins-bad gst-plugins-base gst-plugins-good \
+            gtk3 libayatana-appindicator librsvg mpv nodejs npm openssl \
+            jq patchelf pkgconf rust webkit2gtk-4.1 yt-dlp zsync
+          npm install --global pnpm@11.9.0
 
-      - name: Resolve package version
+      - name: Checkout Harbor source
+        uses: actions/checkout@v7.0.0
+        with:
+          repository: harborstremio/harbor
+          ref: ${{ inputs.source_ref }}
+          path: harbor
+          fetch-depth: 1
+
+      - name: Resolve source and package version
         id: package
         working-directory: harbor
         env:
@@ -74,169 +92,98 @@ jobs:
             version="$(node -p "require('./package.json').version")"
           fi
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "source_ref=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
 
-      - name: Verify AppImage media framework configuration
+      - name: Prepare Harbor workspace
         working-directory: harbor
         run: |
-          node -e '
-          const config = require("./src-tauri/tauri.conf.json");
+          set -euo pipefail
+          node <<'EOF'
+          const fs = require('fs');
+          const workspacePath = 'pnpm-workspace.yaml';
+          let workspace = fs.readFileSync(workspacePath, 'utf8');
+          const setAllowBuild = (name, value) => {
+            const entry = new RegExp(`^(\\s*)${name}:.*$`, 'm');
+            if (entry.test(workspace)) {
+              workspace = workspace.replace(entry, `$1${name}: ${value}`);
+              return;
+            }
+            if (/^allowBuilds:\s*$/m.test(workspace)) {
+              workspace = workspace.replace(/^allowBuilds:\s*$/m, `allowBuilds:\n  ${name}: ${value}`);
+              return;
+            }
+            workspace += `${workspace.endsWith('\n') || !workspace ? '' : '\n'}allowBuilds:\n  ${name}: ${value}\n`;
+          };
+          setAllowBuild('esbuild', 'true');
+          setAllowBuild('protobufjs', 'false');
+          fs.writeFileSync(workspacePath, workspace);
+          EOF
+          pnpm install --lockfile-only --no-frozen-lockfile
+          pnpm install --frozen-lockfile
+          if node -e "process.exit(require('./package.json').scripts?.setup ? 0 : 1)"; then
+            pnpm run setup
+          else
+            if node -e "process.exit(require('./package.json').scripts?.['setup:fonts'] ? 0 : 1)"; then pnpm run setup:fonts; fi
+            mkdir -p src-tauri/binaries
+            ln -sf /usr/bin/ffmpeg src-tauri/binaries/ffmpeg-x86_64-unknown-linux-gnu
+            ln -sf /usr/bin/ffprobe src-tauri/binaries/ffprobe-x86_64-unknown-linux-gnu
+            ln -sf /usr/bin/yt-dlp src-tauri/binaries/yt-dlp-x86_64-unknown-linux-gnu
+          fi
+
+      - name: Install experimental Tauri bundler
+        run: |
+          set -euo pipefail
+          cargo install tauri-cli \
+            --git https://github.com/tauri-apps/tauri \
+            --rev 162626969b382d52faebdf6c7264460bd9a47d1f \
+            --locked \
+            --root "${RUNNER_TEMP}/tauri-cli"
+          echo "${RUNNER_TEMP}/tauri-cli/bin" >> "${GITHUB_PATH}"
+
+      - name: Configure experimental AppImage
+        working-directory: harbor
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          node <<'EOF'
+          const fs = require('fs');
+          const path = 'src-tauri/tauri.conf.json';
+          const config = JSON.parse(fs.readFileSync(path, 'utf8'));
           if (config.bundle?.linux?.appimage?.bundleMediaFramework !== true) {
-            throw new Error("The selected Harbor source does not enable AppImage media-framework bundling.");
+            throw new Error('The selected Harbor source does not enable AppImage media-framework bundling.');
           }
-          '
-
-
-      - name: Disable updater artifacts
-        working-directory: harbor
-        run: |
-          node -e '
-          const fs = require("fs");
-          const path = "src-tauri/tauri.conf.json";
-          const config = JSON.parse(fs.readFileSync(path, "utf8"));
+          const release = process.env.CHANNEL === 'beta' ? 'latest-pre' : 'latest';
           config.bundle.createUpdaterArtifacts = false;
+          config.bundle.linux.appimage.useNewFormat = true;
+          config.bundle.linux.appimage.updateInformation =
+            `gh-releases-zsync|harborstremio-linux|harbor-linux-builds|${release}|Harbor_*_amd64.AppImage.zsync`;
           fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
-          '
+          EOF
 
       - name: Build AppImage
         working-directory: harbor
-        run: pnpm tauri build --target x86_64-unknown-linux-gnu --bundles appimage
-
-      - name: Strip conflicting graphics libraries from AppImage
-        run: |
-          set -euo pipefail
-
-          appimage="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
-          if [ -z "${appimage}" ]; then
-            echo "No AppImage bundle was produced" >&2
-            exit 1
-          fi
-          appimage="$(realpath "${appimage}")"
-
-          tmpdir="$(mktemp -d)"
-          trap 'rm -rf "${tmpdir}"' EXIT
-          (
-            cd "${tmpdir}"
-            "${appimage}" --appimage-extract >/dev/null
-
-            # linuxdeploy bundles Ubuntu's GLVND and Wayland clients with the
-            # GStreamer runtime. Those libraries conflict with Mesa on Arch,
-            # Fedora, and NixOS, making WebKit abort with EGL_BAD_PARAMETER.
-            # Every supported desktop distro supplies this graphics stack.
-            find squashfs-root \( -type f -o -type l \) \( \
-              -name 'libGL.so*' -o \
-              -name 'libEGL.so*' -o \
-              -name 'libGLX.so*' -o \
-              -name 'libGLdispatch.so*' -o \
-              -name 'libgbm.so*' -o \
-              -name 'libwayland-egl.so*' -o \
-              -name 'libwayland-client.so*' -o \
-              -name 'libwayland-server.so*' \
-              \) -print -delete
-
-            # AppRun sets LD_LIBRARY_PATH for the whole process tree. A bundled
-            # libreadline makes host /bin/sh resolve an incompatible readline
-            # symbol, breaking gsettings calls in the GTK runtime hook.
-            # Harbor does not link against readline, and every supported
-            # desktop distro provides the host library for shell utilities.
-            find squashfs-root -type f -name 'libreadline.so*' -print -delete
-
-            # libmpv and FFmpeg stay bundled, but their TLS/HTTP stack must use
-            # the host libraries. Bundling Ubuntu's GnuTLS/OpenSSL dependency
-            # chain can reset streams on other distros even though the player
-            # and codecs are otherwise portable.
-            find squashfs-root/usr/lib -maxdepth 1 -type f \( \
-              -name 'libgnutls.so*' -o \
-              -name 'libssl.so*' -o \
-              -name 'libcrypto.so*' -o \
-              -name 'libnghttp2.so*' -o \
-              -name 'libp11-kit.so*' -o \
-              -name 'libidn2.so*' -o \
-              -name 'libunistring.so*' -o \
-              -name 'libtasn1.so*' -o \
-              -name 'libnettle.so*' -o \
-              -name 'libhogweed.so*' -o \
-              -name 'libffi.so*' \
-              \) -print -delete
-
-            curl --fail --location --retry 3 --retry-all-errors \
-              --output appimagetool \
-              'https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage'
-            chmod +x appimagetool
-            rm -f "${appimage}"
-            APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 ./appimagetool --no-appstream squashfs-root "${appimage}"
-          )
-
-      - name: Validate AppImage media framework
-        run: |
-          set -euo pipefail
-
-          appimage="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage -type f -name '*.AppImage' | head -n 1)"
-          if [ -z "${appimage}" ]; then
-            echo "No AppImage bundle was produced" >&2
-            exit 1
-          fi
-
-          tmpdir="$(mktemp -d)"
-          trap 'rm -rf "${tmpdir}"' EXIT
-          (
-            cd "${tmpdir}"
-            "${GITHUB_WORKSPACE}/${appimage}" --appimage-extract >/dev/null
-          )
-          for required in libgstapp.so libgstautodetect.so gst-plugin-scanner; do
-            if ! find "${tmpdir}/squashfs-root/usr" -type f -name "${required}" -print -quit | grep -q .; then
-              echo "AppImage is missing required GStreamer component: ${required}" >&2
-              exit 1
-            fi
-          done
-          if find "${tmpdir}/squashfs-root" \( -type f -o -type l \) \( \
-            -name 'libGL.so*' -o \
-            -name 'libEGL.so*' -o \
-            -name 'libGLX.so*' -o \
-            -name 'libGLdispatch.so*' -o \
-            -name 'libgbm.so*' -o \
-            -name 'libwayland-egl.so*' -o \
-            -name 'libwayland-client.so*' -o \
-            -name 'libwayland-server.so*' \
-            \) -print -quit | grep -q .; then
-            echo "AppImage still contains bundled graphics libraries" >&2
-            exit 1
-          fi
-          if find "${tmpdir}/squashfs-root" -type f -name 'libreadline.so*' -print -quit | grep -q .; then
-            echo "AppImage still contains bundled libreadline" >&2
-            exit 1
-          fi
-          if find "${tmpdir}/squashfs-root/usr/lib" -maxdepth 1 -type f \( \
-            -name 'libgnutls.so*' -o \
-            -name 'libssl.so*' -o \
-            -name 'libcrypto.so*' -o \
-            -name 'libnghttp2.so*' -o \
-            -name 'libp11-kit.so*' -o \
-            -name 'libidn2.so*' -o \
-            -name 'libunistring.so*' -o \
-            -name 'libtasn1.so*' -o \
-            -name 'libnettle.so*' -o \
-            -name 'libhogweed.so*' -o \
-            -name 'libffi.so*' \
-            \) -print -quit | grep -q .; then
-            echo "AppImage still contains bundled TLS or HTTP libraries" >&2
-            exit 1
-          fi
+        run: timeout --signal=TERM 90m cargo tauri build --target x86_64-unknown-linux-gnu --bundles appimage
 
       - name: Collect AppImage artifacts
         env:
           VERSION: ${{ steps.package.outputs.version }}
         run: |
           set -euo pipefail
-          appimage="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage -type f -name '*.AppImage' | head -n 1)"
-          if [ -z "${appimage}" ]; then
-            echo "No AppImage bundle was produced" >&2
-            exit 1
-          fi
-          asset="Harbor_${VERSION}_x86_64.AppImage"
+          appimage="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          test -n "${appimage}"
+          zsync="${appimage}.zsync"
+          test -f "${zsync}"
           mkdir dist
-          cp "${appimage}" "dist/${asset}"
-          sha256sum "dist/${asset}" > "dist/${asset}.sha256"
-          jq -n --arg source_ref "${{ steps.source.outputs.source_ref }}" --arg version "${VERSION}" --arg asset "${asset}" --arg sha256 "$(sha256sum "dist/${asset}" | awk '{print $1}')" '{source_ref: $source_ref, version: $version, artifacts: [{name: $asset, sha256: $sha256}]}' > dist/build-manifest.json
+          cp "${appimage}" "${zsync}" dist/
+          sha256sum "${appimage}" "${zsync}" > dist/SHA256SUMS-appimage.txt
+          jq -n \
+            --arg source_ref "${{ steps.package.outputs.source_ref }}" \
+            --arg version "${VERSION}" \
+            --arg appimage "$(basename "${appimage}")" \
+            --arg zsync "$(basename "${zsync}")" \
+            '{source_ref: $source_ref, version: $version, artifacts: [$appimage, $zsync]}' \
+            > dist/build-manifest.json
 
       - name: Upload AppImage artifacts
         uses: actions/upload-artifact@v7.0.0
@@ -244,24 +191,3 @@ jobs:
           name: appimage-${{ steps.package.outputs.version }}
           path: dist/
           if-no-files-found: error
-
-  publish:
-    name: Attach AppImage to release
-    needs: build
-    runs-on: ubuntu-24.04
-    environment: release
-    permissions:
-      contents: write
-    steps:
-      - name: Download AppImage artifacts
-        uses: actions/download-artifact@v8.0.1
-        with:
-          name: appimage-${{ needs.build.outputs.version }}
-          path: dist
-
-      - name: Attach AppImage to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          TAG: ${{ inputs.tag }}
-        run: gh release upload "${TAG}" dist/* --repo "${REPOSITORY}" --clobber
