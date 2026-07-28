@@ -12,13 +12,15 @@ Unofficial Linux builds of [Harbor](https://github.com/harborstremio/harbor), bu
 
 > **x86_64 only.** Choose the package that fits your distribution below. Every package download below follows the current [beta release](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115).
 
+> **Beta is recommended.** Harbor development currently moves through the beta channel; stable releases are less frequent and can lag behind the current beta version.
+
 <table>
   <tr>
     <td width="50%" valign="top">
       <h3><img src="https://cdn.simpleicons.org/archlinux/1793D1" width="20" height="20" align="absmiddle" alt="" /> Arch Linux</h3>
-      <p>Install from the AUR. Updates arrive through your usual AUR helper.</p>
-      <p><a href="https://aur.archlinux.org/packages/harbor-stremio-bin"><strong>Open harbor-stremio-bin on AUR →</strong></a></p>
-      <pre><code>paru -S harbor-stremio-bin</code></pre>
+      <p>Install the recommended beta package from the AUR. Updates arrive through your usual AUR helper.</p>
+      <p><a href="https://aur.archlinux.org/packages/harbor-stremio-beta-bin"><strong>Open harbor-stremio-beta-bin on AUR →</strong></a></p>
+      <pre><code>paru -S harbor-stremio-beta-bin</code></pre>
       <p><sub>Replace <code>paru</code> with <code>yay</code> if that is your helper.</sub></p>
     </td>
     <td width="50%" valign="top">
