@@ -545,4 +545,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           TAG: ${{ needs.resolve.outputs.tag }}
-        run: gh release upload "${TAG}" dist/* --repo "${REPOSITORY}" --clobber
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          asset="Harbor_${VERSION}_x86_64.flatpak"
+          checksums="SHA256SUMS-${VERSION}.txt"
+          gh release download "${TAG}" --repo "${REPOSITORY}" --pattern "${checksums}" --dir dist
+          tmpfile="$(mktemp)"
+          trap 'rm -f "${tmpfile}"' EXIT
+          grep -v -F "  ${asset}" "dist/${checksums}" > "${tmpfile}" || true
+          sha256sum "dist/${asset}" >> "${tmpfile}"
+          sort -k 2,2 "${tmpfile}" > "dist/${checksums}"
+          gh release upload "${TAG}" dist/* --repo "${REPOSITORY}" --clobber
