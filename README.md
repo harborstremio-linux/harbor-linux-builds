@@ -82,15 +82,15 @@ Each release includes a SHA-256 checksum file for the core package assets. [Get 
 sha256sum -c SHA256SUMS-*.txt
 ```
 
-## Beta channel
+## Stable releases
 
-Beta packages follow Harbor's `beta-branch` and are published as GitHub pre-releases every five hours when that branch changes.
+Stable packages follow upstream Harbor release tags. They are published less frequently and may be behind the recommended beta channel.
 
-- [Download the current beta](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
-- Arch Linux: [`harbor-stremio-beta-bin`](https://aur.archlinux.org/packages/harbor-stremio-beta-bin)
+- [Download the latest stable release](https://github.com/harborstremio-linux/harbor-linux-builds/releases/latest)
+- Arch Linux: [`harbor-stremio-bin`](https://aur.archlinux.org/packages/harbor-stremio-bin)
 
 ```bash
-paru -S harbor-stremio-beta-bin
+paru -S harbor-stremio-bin
 ```
 
 The stable and beta AUR packages conflict: they install the same Harbor application, so install one channel at a time.
