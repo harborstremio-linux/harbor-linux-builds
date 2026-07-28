@@ -13,28 +13,73 @@ permissions:
 
 jobs:
   build:
-    name: Build experimental portable AppImage
+    name: Build experimental portable AppImage on Arch
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    # The experimental sharun-based Tauri bundler currently requires Arch.
+    # Keep this isolated from release workflows until upstream graduates it.
+    container: archlinux:base-devel
+    timeout-minutes: 150
     steps:
-      - name: Resolve upstream source ref
-        id: source
-        env:
-          GH_TOKEN: ${{ github.token }}
-          INPUT_SOURCE_REF: ${{ inputs.source_ref }}
-        run: |
-          set -euo pipefail
-          source_ref="$(gh api "repos/harborstremio/harbor/commits/${INPUT_SOURCE_REF}" --jq '.sha')"
-          echo "source_ref=${source_ref}" >> "${GITHUB_OUTPUT}"
-
       - name: Checkout packaging workflow
         uses: actions/checkout@v7.0.0
 
-      - name: Set up Harbor build
-        uses: ./.github/actions/setup-harbor-linux
-        with:
-          source_ref: ${{ steps.source.outputs.source_ref }}
-          include_gstreamer: "true"
+      - name: Install Arch build dependencies
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm --needed \
+            alsa-lib base-devel ca-certificates curl ffmpeg git gstreamer \
+            gst-libav gst-plugins-bad gst-plugins-base gst-plugins-good \
+            gtk3 libayatana-appindicator librsvg mpv nodejs npm openssl \
+            patchelf pkgconf rust webkit2gtk-4.1 yt-dlp
+          npm install --global pnpm@11.9.0
+
+      - name: Checkout Harbor source
+        id: source
+        env:
+          INPUT_SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          git init harbor
+          git -C harbor remote add origin https://github.com/harborstremio/harbor.git
+          git -C harbor fetch --depth 1 origin "${INPUT_SOURCE_REF}"
+          git -C harbor checkout --detach FETCH_HEAD
+          echo "source_ref=$(git -C harbor rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
+      - name: Prepare Harbor workspace
+        working-directory: harbor
+        run: |
+          set -euo pipefail
+          node <<'EOF'
+          const fs = require('fs');
+          const workspacePath = 'pnpm-workspace.yaml';
+          let workspace = fs.readFileSync(workspacePath, 'utf8');
+          const setAllowBuild = (name, value) => {
+            const entry = new RegExp(`^(\\s*)${name}:.*$`, 'm');
+            if (entry.test(workspace)) {
+              workspace = workspace.replace(entry, `$1${name}: ${value}`);
+              return;
+            }
+            if (/^allowBuilds:\s*$/m.test(workspace)) {
+              workspace = workspace.replace(/^allowBuilds:\s*$/m, `allowBuilds:\n  ${name}: ${value}`);
+              return;
+            }
+            workspace += `${workspace.endsWith('\n') || !workspace ? '' : '\n'}allowBuilds:\n  ${name}: ${value}\n`;
+          };
+          setAllowBuild('esbuild', 'true');
+          setAllowBuild('protobufjs', 'false');
+          fs.writeFileSync(workspacePath, workspace);
+          EOF
+          pnpm install --lockfile-only --no-frozen-lockfile
+          pnpm install --frozen-lockfile
+          if node -e "process.exit(require('./package.json').scripts?.setup ? 0 : 1)"; then
+            pnpm run setup
+          else
+            if node -e "process.exit(require('./package.json').scripts?.['setup:fonts'] ? 0 : 1)"; then pnpm run setup:fonts; fi
+            mkdir -p src-tauri/binaries
+            ln -sf /usr/bin/ffmpeg src-tauri/binaries/ffmpeg-x86_64-unknown-linux-gnu
+            ln -sf /usr/bin/ffprobe src-tauri/binaries/ffprobe-x86_64-unknown-linux-gnu
+            ln -sf /usr/bin/yt-dlp src-tauri/binaries/yt-dlp-x86_64-unknown-linux-gnu
+          fi
 
       - name: Install experimental Tauri bundler
         run: |
@@ -61,10 +106,7 @@ jobs:
         working-directory: harbor
         env:
           TAURI_BUNDLER_NEW_APPIMAGE_FORMAT: "true"
-          # quick-sharun defaults to a very slow archival compression profile.
-          # This is an experiment artifact, so prioritize a bounded CI build.
-          DWARFS_COMP: "zstd:level=8 -S22 -B6"
-        run: timeout --signal=TERM 45m cargo tauri build --target x86_64-unknown-linux-gnu --bundles appimage
+        run: timeout --signal=TERM 90m cargo tauri build --target x86_64-unknown-linux-gnu --bundles appimage
 
       - name: Collect AppImage artifact
         run: |
