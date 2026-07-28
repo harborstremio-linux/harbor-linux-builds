@@ -50,12 +50,34 @@ jobs:
             build-essential ca-certificates cargo dpkg-dev ffmpeg \
             libasound2-dev libayatana-appindicator3-dev libgtk-3-dev \
             libmpv-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev \
-            nodejs patchelf pkg-config pnpm rustc yt-dlp
+            nodejs patchelf pkg-config rustc yt-dlp
+
+      - name: Inspect Ubuntu archive toolchain availability
+        run: |
+          set -euo pipefail
+          apt-cache policy nodejs pnpm cargo rustc
 
       - name: Verify available toolchain versions
         working-directory: harbor
         run: |
           set -euo pipefail
+
+          # Do not accidentally use a tool preinstalled on the GitHub runner:
+          # a Launchpad builder only has packages declared in Build-Depends.
+          export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+          missing_tools=()
+          for tool in node pnpm rustc cargo; do
+            if ! command -v "${tool}" >/dev/null; then
+              missing_tools+=("${tool}")
+            fi
+          done
+
+          if [ "${#missing_tools[@]}" -gt 0 ]; then
+            echo "Ubuntu 24.04 cannot provide the required archive build tools: ${missing_tools[*]}" >&2
+            exit 1
+          fi
+
           node --version
           pnpm --version
           rustc --version
@@ -75,6 +97,8 @@ jobs:
 
       - name: Build Linux system Debian package without downloaded build assets
         working-directory: harbor
+        env:
+          PATH: /usr/sbin:/usr/bin:/sbin:/bin
         run: |
           set -euo pipefail
           pnpm install --frozen-lockfile
