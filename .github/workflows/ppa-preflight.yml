@@ -1,0 +1,93 @@
+name: PPA Packaging Preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Immutable Harbor commit or ref to test as an Ubuntu source package.
+        required: true
+        default: beta-branch
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harbor-ppa-preflight-${{ inputs.source_ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Ubuntu 24.04 source-build preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Resolve Harbor source commit
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          source_ref="$(gh api "repos/harborstremio/harbor/commits/${INPUT_SOURCE_REF}" --jq '.sha')"
+          echo "source_ref=${source_ref}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check out Harbor source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: harborstremio/harbor
+          ref: ${{ steps.source.outputs.source_ref }}
+          path: harbor
+          fetch-depth: 1
+
+      # A Launchpad builder receives Build-Depends from the Ubuntu archive. Do
+      # not use setup actions, rustup, Corepack, or Harbor's asset fetchers here.
+      - name: Install only Ubuntu archive build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential ca-certificates cargo dpkg-dev ffmpeg \
+            libasound2-dev libayatana-appindicator3-dev libgtk-3-dev \
+            libmpv-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev \
+            nodejs patchelf pkg-config pnpm rustc yt-dlp
+
+      - name: Verify available toolchain versions
+        working-directory: harbor
+        run: |
+          set -euo pipefail
+          node --version
+          pnpm --version
+          rustc --version
+          cargo --version
+
+          node_major="$(node --version | sed 's/^v//' | cut -d. -f1)"
+          if [ "${node_major}" -lt 22 ]; then
+            echo "Ubuntu's Node.js ${node_major} is too old; Harbor requires Node.js 22 or newer." >&2
+            exit 1
+          fi
+
+          pnpm_major="$(pnpm --version | cut -d. -f1)"
+          if [ "${pnpm_major}" -ne 11 ]; then
+            echo "Ubuntu's pnpm is ${pnpm_major}; Harbor's lockfile requires pnpm 11." >&2
+            exit 1
+          fi
+
+      - name: Build Linux system Debian package without downloaded build assets
+        working-directory: harbor
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          timeout --signal=TERM 75m pnpm tauri build \
+            --config src-tauri/tauri.linux-system.conf.json \
+            --target x86_64-unknown-linux-gnu \
+            --bundles deb
+
+      - name: Validate generated Debian package
+        working-directory: harbor
+        run: |
+          set -euo pipefail
+          deb="$(find src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb -type f -name '*.deb' -print -quit)"
+          test -n "${deb}"
+          dpkg-deb --info "${deb}"
+          dpkg-deb --contents "${deb}" >/dev/null

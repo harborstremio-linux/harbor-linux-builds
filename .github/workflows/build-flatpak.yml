@@ -8,8 +8,9 @@ on:
         required: true
         type: string
       tag:
-        description: Existing release tag to receive the Flatpak bundle.
-        required: true
+        description: Existing release tag to receive the Flatpak bundle when publish_release is enabled.
+        required: false
+        default: ""
         type: string
       version:
         description: Harbor package version.
@@ -32,8 +33,9 @@ on:
         required: true
         type: string
       tag:
-        description: Existing release tag to receive the Flatpak bundle.
-        required: true
+        description: Existing release tag to receive the Flatpak bundle when publish_release is enabled.
+        required: false
+        default: ""
         type: string
       version:
         description: Harbor package version. Leave blank to read it from the source ref.
@@ -68,12 +70,14 @@ jobs:
       version: ${{ steps.package.outputs.version }}
     steps:
       - name: Verify target release
+        if: inputs.publish_release
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
+          test -n "${TAG}"
           gh release view "${TAG}" --repo "${REPOSITORY}" >/dev/null
 
       - name: Validate Flatpak channel
@@ -153,9 +157,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           TAG: ${{ inputs.tag }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          SOURCE_REF: ${{ steps.source.outputs.source_ref }}
         run: |
           set -euo pipefail
-          release_date="$(gh release view "${TAG}" --repo "${REPOSITORY}" --json publishedAt --jq '.publishedAt' | cut -dT -f1)"
+          if [ "${PUBLISH_RELEASE}" = true ]; then
+            release_date="$(gh release view "${TAG}" --repo "${REPOSITORY}" --json publishedAt --jq '.publishedAt' | cut -dT -f1)"
+          else
+            release_date="$(git show -s --format=%cs "${SOURCE_REF}")"
+          fi
           RELEASE_DATE="${release_date}" bash flatpak/update-flatpak.sh
           printf '%s\n' '${{ steps.source.outputs.source_ref }}' > flatpak/source-ref.txt
 
