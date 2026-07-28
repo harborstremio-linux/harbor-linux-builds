@@ -56,12 +56,17 @@ flatpak install --user ./Harbor_*.flatpak</code></pre>
   <tr>
     <td width="50%" valign="top">
       <h3>AppImage <small>(experimental)</small></h3>
-      <p>A portable build for most x86_64 Linux distributions. Built with Tauri's experimental portable AppImage bundler while <a href="https://github.com/tauri-apps/tauri/pull/12491">upstream PR #12491</a> is awaiting merge.</p>
-      <p><a href="https://github.com/AdityaHebballe/harbor-linux-builds/releases/latest"><strong>Download the latest .AppImage →</strong></a></p>
+      <p><sub>A portable x86_64 build using Tauri's experimental AppImage bundler, pending <a href="https://github.com/tauri-apps/tauri/pull/12491">upstream PR #12491</a>.</sub></p>
+      <h4><a href="https://github.com/AdityaHebballe/harbor-linux-builds/releases/latest">Download the latest .AppImage →</a></h4>
       <pre><code>cd ~/Downloads
 chmod +x Harbor_*.AppImage
 ./Harbor_*.AppImage</code></pre>
-      <p><sub><a href="https://github.com/mijorus/gearlever">Gear Lever</a> can integrate it and discover updates.</sub></p>
+      <h4>Automatic updates with <a href="https://github.com/mijorus/gearlever">Gear Lever</a></h4>
+      <ol>
+        <li>Open the downloaded AppImage with Gear Lever.</li>
+        <li>Choose <strong>Integrate</strong>.</li>
+        <li>Gear Lever discovers and installs future Harbor updates automatically.</li>
+      </ol>
     </td>
     <td width="50%" valign="top"></td>
   </tr>
