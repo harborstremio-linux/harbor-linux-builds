@@ -141,6 +141,7 @@ jobs:
           echo "${RUNNER_TEMP}/tauri-cli/bin" >> "${GITHUB_PATH}"
 
       - name: Configure experimental AppImage
+        id: appimage
         working-directory: harbor
         env:
           CHANNEL: ${{ inputs.channel }}
@@ -153,16 +154,21 @@ jobs:
           if (config.bundle?.linux?.appimage?.bundleMediaFramework !== true) {
             throw new Error('The selected Harbor source does not enable AppImage media-framework bundling.');
           }
-          const release = process.env.CHANNEL === 'beta' ? 'latest-pre' : 'latest';
           config.bundle.createUpdaterArtifacts = false;
-          config.bundle.linux.appimage.useNewFormat = true;
-          config.bundle.linux.appimage.updateInformation =
-            `gh-releases-zsync|harborstremio-linux|harbor-linux-builds|${release}|Harbor_*_amd64.AppImage.zsync`;
           fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
           EOF
+          if [ "${CHANNEL}" = beta ]; then
+            release=latest-pre
+          else
+            release=latest
+          fi
+          echo "upinfo=gh-releases-zsync|harborstremio-linux|harbor-linux-builds|${release}|Harbor_*_amd64.AppImage.zsync" >> "${GITHUB_OUTPUT}"
 
       - name: Build AppImage
         working-directory: harbor
+        env:
+          TAURI_BUNDLER_NEW_APPIMAGE_FORMAT: "true"
+          UPINFO: ${{ steps.appimage.outputs.upinfo }}
         run: timeout --signal=TERM 90m cargo tauri build --target x86_64-unknown-linux-gnu --bundles appimage
 
       - name: Collect AppImage artifacts
