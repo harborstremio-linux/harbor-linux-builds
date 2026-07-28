@@ -61,7 +61,10 @@ jobs:
         working-directory: harbor
         env:
           TAURI_BUNDLER_NEW_APPIMAGE_FORMAT: "true"
-        run: cargo tauri build --target x86_64-unknown-linux-gnu --bundles appimage
+          # quick-sharun defaults to a very slow archival compression profile.
+          # This is an experiment artifact, so prioritize a bounded CI build.
+          DWARFS_COMP: "zstd:level=8 -S22 -B6"
+        run: timeout --signal=TERM 45m cargo tauri build --target x86_64-unknown-linux-gnu --bundles appimage
 
       - name: Collect AppImage artifact
         run: |
