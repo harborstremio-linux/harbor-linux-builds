@@ -20,6 +20,11 @@ on:
         required: false
         default: stable
         type: string
+      publish_release:
+        description: Attach the generated Flatpak bundle to the specified existing release.
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       source_ref:
@@ -42,6 +47,11 @@ on:
         options:
           - stable
           - beta
+      publish_release:
+        description: Attach the generated Flatpak bundle to the specified existing release.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -54,6 +64,8 @@ jobs:
   build:
     name: Build and attach Flatpak bundle
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.package.outputs.version }}
     steps:
       - name: Verify target release
         env:
@@ -213,3 +225,37 @@ jobs:
           name: flatpak-sources-${{ steps.package.outputs.version }}
           path: harbor/flatpak/
           if-no-files-found: error
+
+  publish:
+    name: Attach Flatpak bundle to release
+    needs: build
+    if: inputs.publish_release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download Flatpak bundle
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: flatpak-bundle-${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Update checksums and upload release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          asset="Harbor_${VERSION}_x86_64.flatpak"
+          checksums="SHA256SUMS-${VERSION}.txt"
+          gh release view "${TAG}" --repo "${REPOSITORY}" >/dev/null
+          gh release download "${TAG}" --repo "${REPOSITORY}" --pattern "${checksums}" --dir dist
+
+          tmpfile="$(mktemp)"
+          trap 'rm -f "${tmpfile}"' EXIT
+          grep -v -F "  ${asset}" "dist/${checksums}" > "${tmpfile}" || true
+          sha256sum "dist/${asset}" >> "${tmpfile}"
+          sort -k 2,2 "${tmpfile}" > "dist/${checksums}"
+          gh release upload "${TAG}" dist/* --repo "${REPOSITORY}" --clobber
