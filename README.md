@@ -56,7 +56,6 @@ flatpak install --user ./Harbor_*.flatpak</code></pre>
   <tr>
     <td width="50%" valign="top">
       <h3><img src="https://avatars.githubusercontent.com/u/16617932?s=200&amp;v=4" width="20" height="20" align="absmiddle" alt="" /> AppImage <small>(experimental)</small></h3>
-      <p><sub>A portable x86_64 build using Tauri's experimental AppImage bundler, pending <a href="https://github.com/tauri-apps/tauri/pull/12491">upstream PR #12491</a>.</sub></p>
       <h4><a href="https://github.com/AdityaHebballe/harbor-linux-builds/releases/latest">Download the latest .AppImage →</a></h4>
       <pre><code>cd ~/Downloads
 chmod +x Harbor_*.AppImage
@@ -67,6 +66,7 @@ chmod +x Harbor_*.AppImage
         <li>Choose <strong>Integrate</strong>.</li>
         <li>Gear Lever discovers and installs future Harbor updates automatically.</li>
       </ol>
+      <p><sub>A portable x86_64 build using Tauri's experimental AppImage bundler, pending <a href="https://github.com/tauri-apps/tauri/pull/12491">upstream PR #12491</a>.</sub></p>
     </td>
     <td width="50%" valign="top"></td>
   </tr>
