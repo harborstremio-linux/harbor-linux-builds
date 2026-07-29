@@ -13,6 +13,18 @@ on:
         required: false
         default: false
         type: boolean
+      target:
+        description: Build target.
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - native
+          - deb
+          - rpm
+          - flatpak
+          - appimage
   schedule:
     - cron: "23 */5 * * *"
 
@@ -78,10 +90,11 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           TAG: ${{ steps.resolve.outputs.tag }}
           FORCE_REBUILD: ${{ inputs.force_rebuild || false }}
+          TARGET: ${{ inputs.target || 'all' }}
         run: |
           set -euo pipefail
           if gh release view "${TAG}" --repo "${REPOSITORY}" >/dev/null 2>&1; then
-            if [ "${FORCE_REBUILD}" = true ]; then
+            if [ "${FORCE_REBUILD}" = true ] || [ "${TARGET}" != all ]; then
               echo "Release ${TAG} already exists, but this manual run will rebuild it."
               echo "should_build=true" >> "${GITHUB_OUTPUT}"
             else
@@ -103,12 +116,13 @@ jobs:
       version: ${{ needs.resolve.outputs.version }}
       channel: beta
       aur_package: ${{ needs.resolve.outputs.aur_package }}
+      target: ${{ inputs.target || 'all' }}
     secrets: inherit
 
   publish-cloudsmith:
     name: Publish beta Debian package to Cloudsmith
     needs: [resolve, publish-channel]
-    if: needs.publish-channel.result == 'success'
+    if: needs.publish-channel.result == 'success' && ((inputs.target || 'all') == 'all' || (inputs.target || 'all') == 'native' || (inputs.target || 'all') == 'deb' || (inputs.target || 'all') == 'rpm')
     runs-on: ubuntu-24.04
     environment: release
     permissions:
@@ -121,6 +135,7 @@ jobs:
           path: dist
 
       - name: Verify Debian package checksum
+        if: inputs.target != 'rpm'
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
@@ -133,6 +148,7 @@ jobs:
           )
 
       - name: Verify RPM package checksum
+        if: inputs.target != 'deb'
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
@@ -151,6 +167,7 @@ jobs:
           cli-version: 1.8.3
 
       - name: Publish verified Debian package
+        if: inputs.target != 'rpm'
         env:
           CLOUDSMITH_REPOSITORY: ${{ vars.CLOUDSMITH_BETA_REPOSITORY }}
           VERSION: ${{ needs.resolve.outputs.version }}
@@ -163,6 +180,7 @@ jobs:
             --tags beta
 
       - name: Publish verified RPM package
+        if: inputs.target != 'deb'
         env:
           CLOUDSMITH_REPOSITORY: ${{ vars.CLOUDSMITH_BETA_REPOSITORY }}
           RPM_DISTRIBUTION: ${{ vars.CLOUDSMITH_BETA_RPM_DISTRIBUTION || 'fedora/44' }}

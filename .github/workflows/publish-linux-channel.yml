@@ -23,6 +23,11 @@ on:
         description: AUR package name for this channel.
         required: true
         type: string
+      target:
+        description: "Build target: all, native, deb, rpm, flatpak, or appimage."
+        required: false
+        default: all
+        type: string
 
 permissions:
   # Reusable Flatpak/AppImage workflows declare optional release-publish jobs.
@@ -35,8 +40,40 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  ensure-release:
+    name: Ensure GitHub release exists
+    needs: build
+    if: always() && (needs.build.result == 'success' || inputs.target == 'flatpak' || inputs.target == 'appimage')
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Create release when needed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          CHANNEL: ${{ inputs.channel }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" --repo "${REPOSITORY}" >/dev/null 2>&1; then exit 0; fi
+          if [ "${TARGET}" = flatpak ] || [ "${TARGET}" = appimage ]; then
+            echo "Target ${TARGET} attaches assets to an existing release; ${TAG} does not exist." >&2
+            exit 1
+          fi
+          notes="Unofficial ${CHANNEL} Linux build of Harbor.\n\nSource: https://github.com/harborstremio/harbor/tree/${SOURCE_REF}\n\nThese binaries are built by this repository's GitHub Actions workflow, not by upstream Harbor."
+          if [ "${CHANNEL}" = beta ]; then
+            gh release create "${TAG}" --repo "${REPOSITORY}" --title "Harbor Linux ${TAG}" --notes "${notes}" --prerelease
+          else
+            gh release create "${TAG}" --repo "${REPOSITORY}" --title "Harbor Linux ${TAG}" --notes "${notes}" --latest
+          fi
+
   build:
     name: Build Linux bundles
+    if: inputs.target == 'all' || inputs.target == 'native' || inputs.target == 'deb' || inputs.target == 'rpm'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -78,34 +115,36 @@ jobs:
           EOF
 
       - name: Build Debian bundle
+        if: inputs.target == 'all' || inputs.target == 'native' || inputs.target == 'deb'
         working-directory: harbor
         run: pnpm tauri build --config src-tauri/tauri.linux-system.conf.json --target x86_64-unknown-linux-gnu --bundles deb
 
       - name: Build RPM bundle
+        if: inputs.target == 'all' || inputs.target == 'native' || inputs.target == 'rpm'
         working-directory: harbor
         run: pnpm tauri build --config src-tauri/tauri.linux-system.conf.json --target x86_64-unknown-linux-gnu --bundles rpm
 
       - name: Validate Linux library ABI
         env:
           CHANNEL: ${{ inputs.channel }}
+          TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
-          deb="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb -type f -name '*.deb' | head -n 1)"
-          test -n "${deb}" || { echo "No Debian bundle was produced" >&2; exit 1; }
-          tmpdir="$(mktemp -d)"
-          trap 'rm -rf "${tmpdir}"' EXIT
-          dpkg-deb -x "${deb}" "${tmpdir}"
-          readelf -d "${tmpdir}/usr/bin/harbor" | grep 'Shared library: \[libmpv.so.2\]'
-          if readelf -d "${tmpdir}/usr/bin/harbor" | grep -q 'Shared library: \[libmpv.so.1\]'; then
-            echo "Harbor is linked against libmpv.so.1; Arch mpv provides libmpv.so.2." >&2
-            exit 1
+          if [ "${TARGET}" != rpm ]; then
+            deb="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb -type f -name '*.deb' | head -n 1)"
+            test -n "${deb}" || { echo "No Debian bundle was produced" >&2; exit 1; }
+            tmpdir="$(mktemp -d)"
+            trap 'rm -rf "${tmpdir}"' EXIT
+            dpkg-deb -x "${deb}" "${tmpdir}"
+            readelf -d "${tmpdir}/usr/bin/harbor" | grep 'Shared library: \[libmpv.so.2\]'
+            if readelf -d "${tmpdir}/usr/bin/harbor" | grep -q 'Shared library: \[libmpv.so.1\]'; then exit 1; fi
           fi
-
-          if [ "${CHANNEL}" = beta ]; then
+          if [ "${CHANNEL}" = beta ] && [ "${TARGET}" != rpm ]; then
             test "$(dpkg-deb -f "${deb}" Package)" = harbor-beta
             dpkg-deb -f "${deb}" Conflicts | grep -Fx harbor
             dpkg-deb -f "${deb}" Replaces | grep -Fx harbor
-
+          fi
+          if [ "${CHANNEL}" = beta ] && [ "${TARGET}" != deb ]; then
             rpm="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm -type f -name '*.rpm' | head -n 1)"
             test -n "${rpm}" || { echo "No RPM bundle was produced" >&2; exit 1; }
             test "$(rpm -qp --qf '%{NAME}' "${rpm}")" = harbor-beta
@@ -116,17 +155,20 @@ jobs:
       - name: Collect artifacts
         env:
           VERSION: ${{ inputs.version }}
+          TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          deb="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb -type f -name '*.deb' | head -n 1)"
-          rpm="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm -type f -name '*.rpm' | head -n 1)"
-          test -n "${deb}" || { echo "No Debian bundle was produced" >&2; exit 1; }
-          test -n "${rpm}" || { echo "No RPM bundle was produced" >&2; exit 1; }
-          deb_asset="Harbor_${VERSION}_amd64.deb"
-          rpm_asset="Harbor-${VERSION}-1.x86_64.rpm"
-          cp -v "${deb}" "dist/${deb_asset}"
-          cp -v "${rpm}" "dist/${rpm_asset}"
+          if [ "${TARGET}" != rpm ]; then
+            deb="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb -type f -name '*.deb' | head -n 1)"
+            test -n "${deb}" || { echo "No Debian bundle was produced" >&2; exit 1; }
+            cp -v "${deb}" "dist/Harbor_${VERSION}_amd64.deb"
+          fi
+          if [ "${TARGET}" != deb ]; then
+            rpm="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm -type f -name '*.rpm' | head -n 1)"
+            test -n "${rpm}" || { echo "No RPM bundle was produced" >&2; exit 1; }
+            cp -v "${rpm}" "dist/Harbor-${VERSION}-1.x86_64.rpm"
+          fi
           cd dist
           sha256sum ./* > "SHA256SUMS-${VERSION}.txt"
           ls -lh
@@ -140,7 +182,7 @@ jobs:
 
   publish:
     name: Publish Linux bundles
-    needs: build
+    needs: [ensure-release, build]
     runs-on: ubuntu-24.04
     environment: release
     permissions:
@@ -168,18 +210,12 @@ jobs:
           checksums="SHA256SUMS-${VERSION}.txt"
           previous_dir="$(mktemp -d)"
           trap 'rm -rf "${previous_dir}"' EXIT
-
-          if gh release view "${TAG}" --repo "${REPOSITORY}" >/dev/null 2>&1; then
-            gh release download "${TAG}" --repo "${REPOSITORY}" --pattern "${checksums}" --dir "${previous_dir}" || true
-            gh release upload "${TAG}" dist/*.deb dist/*.rpm --repo "${REPOSITORY}" --clobber
-          else
-            notes="Unofficial ${CHANNEL} Linux build of Harbor.\n\nSource: https://github.com/harborstremio/harbor/tree/${SOURCE_REF}\n\nThese binaries are built by this repository's GitHub Actions workflow, not by upstream Harbor."
-            if [ "${CHANNEL}" = beta ]; then
-              gh release create "${TAG}" dist/*.deb dist/*.rpm --repo "${REPOSITORY}" --title "Harbor Linux ${TAG}" --notes "${notes}" --prerelease
-            else
-              gh release create "${TAG}" dist/*.deb dist/*.rpm --repo "${REPOSITORY}" --title "Harbor Linux ${TAG}" --notes "${notes}" --latest
-            fi
-          fi
+          shopt -s nullglob
+          assets=(dist/*.deb dist/*.rpm)
+          names=()
+          for asset_path in "${assets[@]}"; do names+=("$(basename "${asset_path}")"); done
+          gh release download "${TAG}" --repo "${REPOSITORY}" --pattern "${checksums}" --dir "${previous_dir}" || true
+          gh release upload "${TAG}" "${assets[@]}" --repo "${REPOSITORY}" --clobber
 
           # Preserve prior checksums only for assets still attached to this
           # release, then replace the core-package lines with fresh hashes.
@@ -192,21 +228,22 @@ jobs:
                   continue
                 fi
                 asset="${entry#*  }"
-                case "${asset}" in
-                  "Harbor_${VERSION}_amd64.deb"|"Harbor-${VERSION}-1.x86_64.rpm"|"${checksums}")
-                    continue
-                    ;;
-                esac
+                if [ "${asset}" = "${checksums}" ]; then continue; fi
+                for current_asset in "${names[@]}"; do [ "${asset}" = "${current_asset}" ] && continue 2; done
                 if grep -Fxq -- "${asset}" "${previous_dir}/assets.txt"; then
                   printf '%s\n' "${entry}"
                 fi
               done < "${previous_dir}/${checksums}"
             fi
-            sha256sum dist/*.deb dist/*.rpm
+            (
+              cd dist
+              sha256sum "${names[@]}"
+            )
           } | sort -k 2,2 > "dist/${checksums}"
           gh release upload "${TAG}" "dist/${checksums}" --repo "${REPOSITORY}" --clobber
 
       - name: Verify published Debian asset
+        if: inputs.target != 'rpm'
         id: published_deb
         env:
           GH_TOKEN: ${{ github.token }}
@@ -224,6 +261,7 @@ jobs:
           echo "sha256=${published_sha256}" >> "${GITHUB_OUTPUT}"
 
       - name: Update AUR package
+        if: inputs.target != 'rpm'
         uses: ./.github/actions/publish-aur
         env:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
@@ -238,7 +276,8 @@ jobs:
 
   flatpak:
     name: Build Flatpak bundle
-    needs: publish
+    needs: ensure-release
+    if: inputs.target == 'all' || inputs.target == 'flatpak'
     uses: ./.github/workflows/build-flatpak.yml
     with:
       source_ref: ${{ inputs.source_ref }}
@@ -248,7 +287,8 @@ jobs:
 
   publish-flatpak:
     name: Publish Flatpak bundle
-    needs: [publish, flatpak]
+    needs: [ensure-release, flatpak]
+    if: inputs.target == 'all' || inputs.target == 'flatpak'
     runs-on: ubuntu-24.04
     concurrency:
       group: harbor-release-assets-${{ inputs.tag }}
@@ -300,7 +340,8 @@ jobs:
 
   appimage:
     name: Build experimental AppImage
-    needs: publish
+    needs: ensure-release
+    if: inputs.target == 'all' || inputs.target == 'appimage'
     uses: ./.github/workflows/build-appimage.yml
     with:
       source_ref: ${{ inputs.source_ref }}
@@ -310,7 +351,8 @@ jobs:
 
   publish-appimage:
     name: Publish experimental AppImage
-    needs: [publish, appimage]
+    needs: [ensure-release, appimage]
+    if: inputs.target == 'all' || inputs.target == 'appimage'
     runs-on: ubuntu-24.04
     concurrency:
       group: harbor-release-assets-${{ inputs.tag }}
