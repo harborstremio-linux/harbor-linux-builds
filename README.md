@@ -100,3 +100,9 @@ The stable and beta AUR packages conflict: they install the same Harbor applicat
 Beta is the primary channel. Each beta release is built from an exact `beta-branch` commit and published once per Harbor version; later commits with the same version do not create another release. Stable releases follow upstream Harbor release tags and can be behind beta. Releases provide `.deb`, `.rpm`, Flatpak, and an experimental AppImage bundle. Flatpak and AppImage build separately, so either can fail without blocking the core packages or the AUR update.
 
 These are community-maintained builds, not binaries published by the upstream Harbor project. The workflow and exact upstream source ref for each build are visible in the [Actions tab](https://github.com/harborstremio-linux/harbor-linux-builds/actions).
+
+## Package repository hosting
+
+<a href="https://cloudsmith.com"><img alt="OSS hosting by Cloudsmith" src="https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith&amp;style=flat-square" /></a>
+
+Package repository hosting is graciously provided by [Cloudsmith](https://cloudsmith.com).
