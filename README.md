@@ -1,6 +1,6 @@
 # Harbor for Linux
 
-Unofficial Linux builds of [Harbor](https://github.com/harborstremio/harbor), built from its upstream source tags by GitHub Actions.
+Official Linux builds of [Harbor](https://github.com/harborstremio/harbor), built from its upstream source tags by GitHub Actions.
 
 <p align="center">
   <a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115"><strong>Download beta</strong></a>
@@ -25,28 +25,25 @@ Unofficial Linux builds of [Harbor](https://github.com/harborstremio/harbor), bu
     </td>
     <td width="50%" valign="top">
       <h3>
-        <img src="https://cdn.simpleicons.org/debian/A81D33" width="20" height="20" align="absmiddle" alt="" />
         <img src="https://cdn.simpleicons.org/ubuntu/E95420" width="20" height="20" align="absmiddle" alt="" />
-        <img src="https://cdn.simpleicons.org/linuxmint/87CF3E" width="20" height="20" align="absmiddle" alt="" />
-        Debian, Ubuntu &amp; Mint
+        Ubuntu 24.04
       </h3>
-      <p><a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115"><strong>Download the latest .deb →</strong></a></p>
-      <pre><code>cd ~/Downloads
-sudo apt install ./Harbor_*.deb</code></pre>
+      <p>Install the beta package repository for automatic updates.</p>
+      <pre><code>curl -1sLf 'https://dl.cloudsmith.io/public/harborstremio/harbor-beta/setup.deb.sh' | sudo -E bash
+sudo apt install harbor-beta</code></pre>
+      <p><sub><a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115">Download the latest .deb directly instead →</a></sub></p>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
       <h3>
         <img src="https://cdn.simpleicons.org/fedora/51A2DA" width="20" height="20" align="absmiddle" alt="" />
-        <img src="https://cdn.simpleicons.org/opensuse/73BA25" width="20" height="20" align="absmiddle" alt="" />
-        Fedora &amp; openSUSE
+        Fedora 44
       </h3>
-      <p><a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115"><strong>Download the latest .rpm →</strong></a></p>
-      <p><strong>Fedora</strong></p>
-      <pre><code>sudo dnf install ./Harbor-*.rpm</code></pre>
-      <p><strong>openSUSE</strong></p>
-      <pre><code>sudo zypper install ./Harbor-*.rpm</code></pre>
+      <p>Install the beta package repository for automatic updates.</p>
+      <pre><code>curl -1sLf 'https://dl.cloudsmith.io/public/harborstremio/harbor-beta/setup.rpm.sh' | sudo -E bash
+sudo dnf install harbor-beta</code></pre>
+      <p><sub><a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115">Download the latest .rpm directly instead →</a></sub></p>
     </td>
     <td width="50%" valign="top">
       <h3><img src="https://cdn.simpleicons.org/flatpak/4A90D9" width="20" height="20" align="absmiddle" alt="" /> Flatpak</h3>
@@ -99,7 +96,7 @@ The stable and beta AUR packages conflict: they install the same Harbor applicat
 
 Beta is the primary channel. Each beta release is built from an exact `beta-branch` commit and published once per Harbor version; later commits with the same version do not create another release. Stable releases follow upstream Harbor release tags and can be behind beta. Releases provide `.deb`, `.rpm`, Flatpak, and an experimental AppImage bundle. Flatpak and AppImage build separately, so either can fail without blocking the core packages or the AUR update.
 
-These are community-maintained builds, not binaries published by the upstream Harbor project. The workflow and exact upstream source ref for each build are visible in the [Actions tab](https://github.com/harborstremio-linux/harbor-linux-builds/actions).
+These are official Harbor Linux builds. The workflow and exact upstream source ref for each build are visible in the [Actions tab](https://github.com/harborstremio-linux/harbor-linux-builds/actions).
 
 ## Package repository hosting
 

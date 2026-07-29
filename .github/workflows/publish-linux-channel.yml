@@ -64,7 +64,7 @@ jobs:
             echo "Target ${TARGET} attaches assets to an existing release; ${TAG} does not exist." >&2
             exit 1
           fi
-          notes="Unofficial ${CHANNEL} Linux build of Harbor.\n\nSource: https://github.com/harborstremio/harbor/tree/${SOURCE_REF}\n\nThese binaries are built by this repository's GitHub Actions workflow, not by upstream Harbor."
+          notes="Official ${CHANNEL} Linux build of Harbor.\n\nSource: https://github.com/harborstremio/harbor/tree/${SOURCE_REF}\n\nThese binaries are built by Harbor's official Linux packaging workflow."
           if [ "${CHANNEL}" = beta ]; then
             gh release create "${TAG}" --repo "${REPOSITORY}" --title "Harbor Linux ${TAG}" --notes "${notes}" --prerelease
           else
