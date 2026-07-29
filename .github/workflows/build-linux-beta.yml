@@ -22,10 +22,14 @@ jobs:
   resolve:
     name: Resolve upstream beta commit
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     outputs:
       source_ref: ${{ steps.resolve.outputs.source_ref }}
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
+      aur_package: ${{ steps.resolve.outputs.aur_package }}
+      should_build: ${{ steps.check.outputs.should_build }}
     steps:
       - name: Resolve beta commit and version
         id: resolve
@@ -55,24 +59,89 @@ jobs:
           existing_tag="$(gh release list --repo "${REPOSITORY}" --limit 100 --json name,tagName | jq -r --arg name "Harbor Linux beta-v${version}" '.[] | select(.name == $name) | .tagName' | head -n 1)"
           tag="${existing_tag:-beta-v${version}}"
 
-          echo "source_ref=${source_ref}" >> "${GITHUB_OUTPUT}"
-          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
-          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "source_ref=${source_ref}"
+            echo "tag=${tag}"
+            echo "version=${version}"
+            echo "aur_package=harbor-stremio-beta-bin"
+          } >> "${GITHUB_OUTPUT}"
 
-  build:
+      - name: Check existing release
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" --repo "${REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists; nothing to do."
+            echo "should_build=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "should_build=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+  publish-channel:
     name: Build beta Linux bundles
     needs: resolve
-    uses: ./.github/workflows/build-linux-release.yml
+    if: needs.resolve.outputs.should_build == 'true'
+    uses: ./.github/workflows/publish-linux-channel.yml
     with:
       source_ref: ${{ needs.resolve.outputs.source_ref }}
       tag: ${{ needs.resolve.outputs.tag }}
       version: ${{ needs.resolve.outputs.version }}
       channel: beta
+      aur_package: ${{ needs.resolve.outputs.aur_package }}
     secrets: inherit
+
+  publish-cloudsmith:
+    name: Publish beta Debian package to Cloudsmith
+    needs: [resolve, publish-channel]
+    if: needs.publish-channel.result == 'success'
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - name: Download Linux bundles
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-bundles-${{ needs.resolve.outputs.version }}
+          path: dist
+
+      - name: Verify Debian package checksum
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          asset="Harbor_${VERSION}_amd64.deb"
+          checksums="SHA256SUMS-${VERSION}.txt"
+          (
+            cd dist
+            grep -F "  ${asset}" "${checksums}" | sha256sum --check --strict
+          )
+
+      - name: Install Cloudsmith CLI
+        uses: cloudsmith-io/cloudsmith-cli-action@159f1619275d5d3147f059c3cc110938ec221d16 # v2
+        with:
+          api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
+          cli-version: 1.8.3
+
+      - name: Publish verified Debian package
+        env:
+          CLOUDSMITH_REPOSITORY: ${{ vars.CLOUDSMITH_BETA_REPOSITORY }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDSMITH_REPOSITORY}"
+          cloudsmith push deb "${CLOUDSMITH_REPOSITORY}/ubuntu/noble" \
+            "dist/Harbor_${VERSION}_amd64.deb" \
+            --republish \
+            --tags beta
 
   update-readme:
     name: Update primary beta download links
-    needs: [resolve, build]
+    needs: [resolve, publish-channel]
     if: always() && needs.resolve.result == 'success'
     runs-on: ubuntu-24.04
     steps:

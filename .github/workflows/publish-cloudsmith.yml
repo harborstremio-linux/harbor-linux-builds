@@ -16,7 +16,7 @@ on:
       cloudsmith_repository:
         description: Cloudsmith owner/repository slug.
         required: true
-        default: harborstremio/harbor-linux-beta
+        default: harborstremio/harbor-beta
         type: string
 
 permissions:
@@ -66,4 +66,5 @@ jobs:
           set -euo pipefail
           cloudsmith push deb "${CLOUDSMITH_REPOSITORY}/ubuntu/noble" \
             "dist/Harbor_${VERSION}_amd64.deb" \
+            --republish \
             --tags beta

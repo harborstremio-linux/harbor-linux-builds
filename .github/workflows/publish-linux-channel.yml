@@ -1,0 +1,282 @@
+name: Publish Harbor Linux Channel
+
+on:
+  workflow_call:
+    inputs:
+      source_ref:
+        description: Exact Harbor commit or ref to build.
+        required: true
+        type: string
+      tag:
+        description: GitHub release tag to create or update.
+        required: true
+        type: string
+      version:
+        description: Harbor package version.
+        required: true
+        type: string
+      channel:
+        description: Package channel.
+        required: true
+        type: string
+      aur_package:
+        description: AUR package name for this channel.
+        required: true
+        type: string
+
+permissions:
+  # Reusable Flatpak/AppImage workflows declare optional release-publish jobs.
+  # GitHub validates their maximum permission at this workflow boundary, even
+  # when this workflow invokes only their build jobs.
+  contents: write
+
+concurrency:
+  group: harbor-linux-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Linux bundles
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout packaging workflow
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Harbor build
+        uses: ./.github/actions/setup-harbor-linux
+        with:
+          source_ref: ${{ inputs.source_ref }}
+          include_rpm_tooling: "true"
+
+      - name: Disable updater artifacts
+        working-directory: harbor
+        run: |
+          # shellcheck disable=SC2016 # JavaScript template literal is intentional.
+          node -e '
+          const fs = require("fs");
+          const path = "src-tauri/tauri.conf.json";
+          const config = JSON.parse(fs.readFileSync(path, "utf8"));
+          config.bundle.createUpdaterArtifacts = false;
+          fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+          '
+
+      - name: Build Debian bundle
+        working-directory: harbor
+        run: pnpm tauri build --config src-tauri/tauri.linux-system.conf.json --target x86_64-unknown-linux-gnu --bundles deb
+
+      - name: Build RPM bundle
+        working-directory: harbor
+        run: pnpm tauri build --config src-tauri/tauri.linux-system.conf.json --target x86_64-unknown-linux-gnu --bundles rpm
+
+      - name: Validate Linux library ABI
+        run: |
+          set -euo pipefail
+          deb="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb -type f -name '*.deb' | head -n 1)"
+          test -n "${deb}" || { echo "No Debian bundle was produced" >&2; exit 1; }
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "${tmpdir}"' EXIT
+          dpkg-deb -x "${deb}" "${tmpdir}"
+          readelf -d "${tmpdir}/usr/bin/harbor" | grep 'Shared library: \[libmpv.so.2\]'
+          if readelf -d "${tmpdir}/usr/bin/harbor" | grep -q 'Shared library: \[libmpv.so.1\]'; then
+            echo "Harbor is linked against libmpv.so.1; Arch mpv provides libmpv.so.2." >&2
+            exit 1
+          fi
+
+      - name: Collect artifacts
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          deb="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb -type f -name '*.deb' | head -n 1)"
+          rpm="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm -type f -name '*.rpm' | head -n 1)"
+          test -n "${deb}" || { echo "No Debian bundle was produced" >&2; exit 1; }
+          test -n "${rpm}" || { echo "No RPM bundle was produced" >&2; exit 1; }
+          deb_asset="Harbor_${VERSION}_amd64.deb"
+          rpm_asset="Harbor-${VERSION}-1.x86_64.rpm"
+          cp -v "${deb}" "dist/${deb_asset}"
+          cp -v "${rpm}" "dist/${rpm_asset}"
+          cd dist
+          sha256sum ./* > "SHA256SUMS-${VERSION}.txt"
+          ls -lh
+
+      - name: Upload Linux bundles
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-bundles-${{ inputs.version }}
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish Linux bundles
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout packaging workflow
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download Linux bundles
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-bundles-${{ inputs.version }}
+          path: dist
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          CHANNEL: ${{ inputs.channel }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" --repo "${REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" dist/* --repo "${REPOSITORY}" --clobber
+            exit 0
+          fi
+          notes="Unofficial ${CHANNEL} Linux build of Harbor.\n\nSource: https://github.com/harborstremio/harbor/tree/${SOURCE_REF}\n\nThese binaries are built by this repository's GitHub Actions workflow, not by upstream Harbor."
+          if [ "${CHANNEL}" = beta ]; then
+            gh release create "${TAG}" dist/* --repo "${REPOSITORY}" --title "Harbor Linux ${TAG}" --notes "${notes}" --prerelease
+          else
+            gh release create "${TAG}" dist/* --repo "${REPOSITORY}" --title "Harbor Linux ${TAG}" --notes "${notes}" --latest
+          fi
+
+      - name: Verify published Debian asset
+        id: published_deb
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          DEB_ASSET: Harbor_${{ inputs.version }}_amd64.deb
+        run: |
+          set -euo pipefail
+          expected_sha256="$(sha256sum "dist/${DEB_ASSET}" | awk '{print $1}')"
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "${tmpdir}"' EXIT
+          gh release download "${TAG}" --repo "${REPOSITORY}" --pattern "${DEB_ASSET}" --dir "${tmpdir}"
+          published_sha256="$(sha256sum "${tmpdir}/${DEB_ASSET}" | awk '{print $1}')"
+          test "${published_sha256}" = "${expected_sha256}"
+          echo "sha256=${published_sha256}" >> "${GITHUB_OUTPUT}"
+
+      - name: Update AUR package
+        uses: ./.github/actions/publish-aur
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        with:
+          version: ${{ inputs.version }}
+          tag: ${{ inputs.tag }}
+          channel: ${{ inputs.channel }}
+          package: ${{ inputs.aur_package }}
+          deb_asset: Harbor_${{ inputs.version }}_amd64.deb
+          deb_sha256: ${{ steps.published_deb.outputs.sha256 }}
+          repository: ${{ github.repository }}
+
+  flatpak:
+    name: Build Flatpak bundle
+    needs: publish
+    uses: ./.github/workflows/build-flatpak.yml
+    with:
+      source_ref: ${{ inputs.source_ref }}
+      tag: ${{ inputs.tag }}
+      version: ${{ inputs.version }}
+      channel: ${{ inputs.channel }}
+
+  publish-flatpak:
+    name: Publish Flatpak bundle
+    needs: [publish, flatpak]
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: harbor-release-assets-${{ inputs.tag }}
+      cancel-in-progress: false
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout packaging workflow
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download Flatpak bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: flatpak-bundle-${{ inputs.version }}
+          path: dist
+      - name: Download refreshed Flatpak sources
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: flatpak-sources-${{ inputs.version }}
+          path: flatpak-artifact
+      - name: Persist downstream Flatpak sources
+        run: |
+          set -euo pipefail
+          rsync -a --delete flatpak-artifact/ flatpak/
+          git add flatpak
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name "Aditya Hebballe"
+          git config user.email "45328110+AdityaHebballe@users.noreply.github.com"
+          git commit -m "build(flatpak): sync ${{ inputs.version }}"
+          git pull --rebase origin main
+          git push origin HEAD:main
+      - name: Publish Flatpak bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          asset="Harbor_${VERSION}_x86_64.flatpak"
+          checksums="SHA256SUMS-${VERSION}.txt"
+          gh release download "${TAG}" --repo "${REPOSITORY}" --pattern "${checksums}" --dir dist
+          tmpfile="$(mktemp)"
+          trap 'rm -f "${tmpfile}"' EXIT
+          grep -v -F "  ${asset}" "dist/${checksums}" > "${tmpfile}" || true
+          sha256sum "dist/${asset}" >> "${tmpfile}"
+          sort -k 2,2 "${tmpfile}" > "dist/${checksums}"
+          gh release upload "${TAG}" dist/* --repo "${REPOSITORY}" --clobber
+
+  appimage:
+    name: Build experimental AppImage
+    needs: publish
+    uses: ./.github/workflows/build-appimage.yml
+    with:
+      source_ref: ${{ inputs.source_ref }}
+      tag: ${{ inputs.tag }}
+      version: ${{ inputs.version }}
+      channel: ${{ inputs.channel }}
+
+  publish-appimage:
+    name: Publish experimental AppImage
+    needs: [publish, appimage]
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: harbor-release-assets-${{ inputs.tag }}
+      cancel-in-progress: false
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Download AppImage artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: appimage-${{ inputs.version }}
+          path: dist
+      - name: Append AppImage checksums and publish assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          checksums="SHA256SUMS-${VERSION}.txt"
+          gh release download "${TAG}" --repo "${REPOSITORY}" --pattern "${checksums}" --dir dist
+          tmpfile="$(mktemp)"
+          trap 'rm -f "${tmpfile}"' EXIT
+          grep -v -E '  Harbor_.*_amd64\.AppImage(\.zsync)?$' "dist/${checksums}" > "${tmpfile}" || true
+          sha256sum dist/*.AppImage dist/*.AppImage.zsync >> "${tmpfile}"
+          sort -k 2,2 "${tmpfile}" > "dist/${checksums}"
+          gh release upload "${TAG}" dist/*.AppImage dist/*.AppImage.zsync "dist/${checksums}" --repo "${REPOSITORY}" --clobber
