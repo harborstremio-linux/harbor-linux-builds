@@ -30,7 +30,10 @@ on:
     - cron: "17 */6 * * *"
 
 permissions:
-  contents: read
+  # Reusable Flatpak/AppImage workflows declare optional release-publish jobs.
+  # GitHub validates their maximum permission at this workflow boundary, even
+  # when this workflow invokes only their build jobs.
+  contents: write
 
 concurrency:
   group: harbor-linux-${{ inputs.tag || 'latest' }}
@@ -40,6 +43,8 @@ jobs:
   resolve:
     name: Resolve upstream tag
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
