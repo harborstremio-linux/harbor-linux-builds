@@ -1,0 +1,69 @@
+name: Publish Debian Package to Cloudsmith
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing GitHub release tag containing the Debian package.
+        required: true
+        default: beta-v0.9.115
+        type: string
+      version:
+        description: Harbor package version to publish.
+        required: true
+        default: 0.9.115
+        type: string
+      cloudsmith_repository:
+        description: Cloudsmith owner/repository slug.
+        required: true
+        default: harborstremio/harbor-linux-beta
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudsmith-${{ inputs.cloudsmith_repository }}-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish Ubuntu Noble package
+    runs-on: ubuntu-24.04
+    environment: release
+    steps:
+      - name: Download and verify GitHub Release package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ inputs.release_tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          asset="Harbor_${VERSION}_amd64.deb"
+          checksums="SHA256SUMS-${VERSION}.txt"
+          mkdir dist
+          gh release download "${TAG}" --repo "${REPOSITORY}" \
+            --pattern "${asset}" \
+            --pattern "${checksums}" \
+            --dir dist
+          (
+            cd dist
+            grep -F "  ${asset}" "${checksums}" | sha256sum --check --strict
+          )
+
+      - name: Install Cloudsmith CLI
+        uses: cloudsmith-io/cloudsmith-cli-action@159f1619275d5d3147f059c3cc110938ec221d16 # v2
+        with:
+          api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
+          cli-version: 1.8.3
+
+      - name: Publish verified Debian package
+        env:
+          CLOUDSMITH_REPOSITORY: ${{ inputs.cloudsmith_repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          cloudsmith push deb "${CLOUDSMITH_REPOSITORY}/ubuntu/noble" \
+            "dist/Harbor_${VERSION}_amd64.deb" \
+            --tags beta
