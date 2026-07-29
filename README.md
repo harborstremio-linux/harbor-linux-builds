@@ -14,62 +14,60 @@ Official Linux builds of [Harbor](https://github.com/harborstremio/harbor), buil
 
 > **Beta is recommended.** Harbor development currently moves through the beta channel; stable releases are less frequent and can lag behind the current beta version.
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <h3><img src="https://cdn.simpleicons.org/archlinux/1793D1" width="20" height="20" align="absmiddle" alt="" /> Arch Linux</h3>
-      <p>Install the recommended beta package from the AUR. Updates arrive through your usual AUR helper.</p>
-      <p><a href="https://aur.archlinux.org/packages/harbor-stremio-beta-bin"><strong>Open harbor-stremio-beta-bin on AUR →</strong></a></p>
-      <pre><code>paru -S harbor-stremio-beta-bin</code></pre>
-      <p><sub>Replace <code>paru</code> with <code>yay</code> if that is your helper.</sub></p>
-    </td>
-    <td width="50%" valign="top">
-      <h3>
-        <img src="https://cdn.simpleicons.org/ubuntu/E95420" width="20" height="20" align="absmiddle" alt="" />
-        Ubuntu 24.04
-      </h3>
-      <p>Install the beta package repository for automatic updates.</p>
-      <pre><code>curl -1sLf 'https://dl.cloudsmith.io/public/harborstremio/harbor-beta/setup.deb.sh' | sudo -E bash
-sudo apt install harbor-beta</code></pre>
-      <p><sub><a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115">Download the latest .deb directly instead →</a></sub></p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <h3>
-        <img src="https://cdn.simpleicons.org/fedora/51A2DA" width="20" height="20" align="absmiddle" alt="" />
-        Fedora 44
-      </h3>
-      <p>Install the beta package repository for automatic updates.</p>
-      <pre><code>curl -1sLf 'https://dl.cloudsmith.io/public/harborstremio/harbor-beta/setup.rpm.sh' | sudo -E bash
-sudo dnf install harbor-beta</code></pre>
-      <p><sub><a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115">Download the latest .rpm directly instead →</a></sub></p>
-    </td>
-    <td width="50%" valign="top">
-      <h3><img src="https://cdn.simpleicons.org/flatpak/4A90D9" width="20" height="20" align="absmiddle" alt="" /> Flatpak</h3>
-      <p><a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115"><strong>Download the latest .flatpak →</strong></a></p>
-      <pre><code>cd ~/Downloads
-flatpak install --user ./Harbor_*.flatpak</code></pre>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <h3><img src="https://avatars.githubusercontent.com/u/16617932?s=200&amp;v=4" width="20" height="20" align="absmiddle" alt="" /> AppImage <small>(experimental)</small></h3>
-      <h4><a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115">Download the latest .AppImage →</a></h4>
-      <pre><code>cd ~/Downloads
+## Install beta
+
+### Arch Linux
+
+Install the recommended beta package from the AUR. Updates arrive through your usual AUR helper.
+
+```bash
+paru -S harbor-stremio-beta-bin
+```
+
+Replace `paru` with `yay` if that is your helper.
+
+### Ubuntu 24.04
+
+Install the beta package repository for automatic updates.
+
+```bash
+curl -1sLf 'https://dl.cloudsmith.io/public/harborstremio/harbor-beta/setup.deb.sh' | sudo -E bash
+sudo apt install harbor-beta
+```
+
+[Download the latest .deb directly instead →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
+
+### Fedora 44
+
+Install the beta package repository for automatic updates.
+
+```bash
+curl -1sLf 'https://dl.cloudsmith.io/public/harborstremio/harbor-beta/setup.rpm.sh' | sudo -E bash
+sudo dnf install harbor-beta
+```
+
+[Download the latest .rpm directly instead →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
+
+### Flatpak
+
+[Download the latest .flatpak →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
+
+```bash
+flatpak install --user ./Harbor_*.flatpak
+```
+
+### AppImage (experimental)
+
+[Download the latest .AppImage →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
+
+```bash
 chmod +x Harbor_*.AppImage
-./Harbor_*.AppImage</code></pre>
-      <h4>Automatic updates with <a href="https://github.com/mijorus/gearlever">Gear Lever</a></h4>
-      <ol>
-        <li>Open the downloaded AppImage with Gear Lever.</li>
-        <li>Choose <strong>Integrate</strong>.</li>
-        <li>Gear Lever discovers and installs future Harbor updates automatically.</li>
-      </ol>
-      <p><sub>A portable x86_64 build using Tauri's experimental AppImage bundler, pending <a href="https://github.com/tauri-apps/tauri/pull/12491">upstream PR #12491</a>.</sub></p>
-    </td>
-    <td width="50%" valign="top"></td>
-  </tr>
-</table>
+./Harbor_*.AppImage
+```
+
+For automatic updates, open the downloaded AppImage with [Gear Lever](https://github.com/mijorus/gearlever) and choose **Integrate**.
+
+A portable x86_64 build using Tauri's experimental AppImage bundler, pending [upstream PR #12491](https://github.com/tauri-apps/tauri/pull/12491).
 
 ## Verify a download
 
