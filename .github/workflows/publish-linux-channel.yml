@@ -162,18 +162,49 @@ jobs:
           TAG: ${{ inputs.tag }}
           CHANNEL: ${{ inputs.channel }}
           SOURCE_REF: ${{ inputs.source_ref }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
+          checksums="SHA256SUMS-${VERSION}.txt"
+          previous_dir="$(mktemp -d)"
+          trap 'rm -rf "${previous_dir}"' EXIT
+
           if gh release view "${TAG}" --repo "${REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload "${TAG}" dist/* --repo "${REPOSITORY}" --clobber
-            exit 0
-          fi
-          notes="Unofficial ${CHANNEL} Linux build of Harbor.\n\nSource: https://github.com/harborstremio/harbor/tree/${SOURCE_REF}\n\nThese binaries are built by this repository's GitHub Actions workflow, not by upstream Harbor."
-          if [ "${CHANNEL}" = beta ]; then
-            gh release create "${TAG}" dist/* --repo "${REPOSITORY}" --title "Harbor Linux ${TAG}" --notes "${notes}" --prerelease
+            gh release download "${TAG}" --repo "${REPOSITORY}" --pattern "${checksums}" --dir "${previous_dir}" || true
+            gh release upload "${TAG}" dist/*.deb dist/*.rpm --repo "${REPOSITORY}" --clobber
           else
-            gh release create "${TAG}" dist/* --repo "${REPOSITORY}" --title "Harbor Linux ${TAG}" --notes "${notes}" --latest
+            notes="Unofficial ${CHANNEL} Linux build of Harbor.\n\nSource: https://github.com/harborstremio/harbor/tree/${SOURCE_REF}\n\nThese binaries are built by this repository's GitHub Actions workflow, not by upstream Harbor."
+            if [ "${CHANNEL}" = beta ]; then
+              gh release create "${TAG}" dist/*.deb dist/*.rpm --repo "${REPOSITORY}" --title "Harbor Linux ${TAG}" --notes "${notes}" --prerelease
+            else
+              gh release create "${TAG}" dist/*.deb dist/*.rpm --repo "${REPOSITORY}" --title "Harbor Linux ${TAG}" --notes "${notes}" --latest
+            fi
           fi
+
+          # Preserve prior checksums only for assets still attached to this
+          # release, then replace the core-package lines with fresh hashes.
+          # This transfers only the small manifest, not the Flatpak/AppImage.
+          gh release view "${TAG}" --repo "${REPOSITORY}" --json assets --jq '.assets[].name' > "${previous_dir}/assets.txt"
+          {
+            if [ -f "${previous_dir}/${checksums}" ]; then
+              while IFS= read -r entry; do
+                if [[ ! "${entry}" =~ ^[[:xdigit:]]{64}\ \ .+ ]]; then
+                  continue
+                fi
+                asset="${entry#*  }"
+                case "${asset}" in
+                  "Harbor_${VERSION}_amd64.deb"|"Harbor-${VERSION}-1.x86_64.rpm"|"${checksums}")
+                    continue
+                    ;;
+                esac
+                if grep -Fxq -- "${asset}" "${previous_dir}/assets.txt"; then
+                  printf '%s\n' "${entry}"
+                fi
+              done < "${previous_dir}/${checksums}"
+            fi
+            sha256sum dist/*.deb dist/*.rpm
+          } | sort -k 2,2 > "dist/${checksums}"
+          gh release upload "${TAG}" "dist/${checksums}" --repo "${REPOSITORY}" --clobber
 
       - name: Verify published Debian asset
         id: published_deb
