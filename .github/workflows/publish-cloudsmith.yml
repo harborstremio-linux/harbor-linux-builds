@@ -1,4 +1,4 @@
-name: Publish Debian Package to Cloudsmith
+name: Publish Linux Packages to Cloudsmith
 
 on:
   workflow_dispatch:
@@ -28,11 +28,11 @@ concurrency:
 
 jobs:
   publish:
-    name: Publish Ubuntu Noble package
+    name: Publish beta Linux packages
     runs-on: ubuntu-24.04
     environment: release
     steps:
-      - name: Download and verify GitHub Release package
+      - name: Download and verify GitHub Release packages
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -40,16 +40,16 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          asset="Harbor_${VERSION}_amd64.deb"
           checksums="SHA256SUMS-${VERSION}.txt"
           mkdir dist
           gh release download "${TAG}" --repo "${REPOSITORY}" \
-            --pattern "${asset}" \
+            --pattern "Harbor_${VERSION}_amd64.deb" \
+            --pattern "Harbor-${VERSION}-1.x86_64.rpm" \
             --pattern "${checksums}" \
             --dir dist
           (
             cd dist
-            grep -F "  ${asset}" "${checksums}" | sha256sum --check --strict
+            grep -F -e "  Harbor_${VERSION}_amd64.deb" -e "  Harbor-${VERSION}-1.x86_64.rpm" "${checksums}" | sha256sum --check --strict
           )
 
       - name: Install Cloudsmith CLI
@@ -66,5 +66,18 @@ jobs:
           set -euo pipefail
           cloudsmith push deb "${CLOUDSMITH_REPOSITORY}/ubuntu/noble" \
             "dist/Harbor_${VERSION}_amd64.deb" \
+            --republish \
+            --tags beta
+
+      - name: Publish verified RPM package
+        env:
+          CLOUDSMITH_REPOSITORY: ${{ inputs.cloudsmith_repository }}
+          RPM_DISTRIBUTION: ${{ vars.CLOUDSMITH_BETA_RPM_DISTRIBUTION || 'fedora/44' }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "${RPM_DISTRIBUTION}"
+          cloudsmith push rpm "${CLOUDSMITH_REPOSITORY}/${RPM_DISTRIBUTION}" \
+            "dist/Harbor-${VERSION}-1.x86_64.rpm" \
             --republish \
             --tags beta
