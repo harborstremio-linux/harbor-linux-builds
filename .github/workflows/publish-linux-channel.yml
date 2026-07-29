@@ -52,15 +52,30 @@ jobs:
 
       - name: Disable updater artifacts
         working-directory: harbor
+        env:
+          CHANNEL: ${{ inputs.channel }}
         run: |
-          # shellcheck disable=SC2016 # JavaScript template literal is intentional.
-          node -e '
-          const fs = require("fs");
+          node <<'EOF'
+          const fs = require("node:fs");
           const path = "src-tauri/tauri.conf.json";
           const config = JSON.parse(fs.readFileSync(path, "utf8"));
           config.bundle.createUpdaterArtifacts = false;
+
+          if (process.env.CHANNEL === "beta") {
+            // This changes Linux package identity only. Keep the Tauri
+            // identifier untouched so beta/stable use the same Harbor data.
+            config.productName = "Harbor Beta";
+            config.bundle.linux ??= {};
+            config.bundle.linux.deb ??= {};
+            config.bundle.linux.rpm ??= {};
+            config.bundle.linux.deb.conflicts = ["harbor"];
+            config.bundle.linux.deb.replaces = ["harbor"];
+            config.bundle.linux.rpm.conflicts = ["harbor"];
+            config.bundle.linux.rpm.obsoletes = ["harbor"];
+          }
+
           fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
-          '
+          EOF
 
       - name: Build Debian bundle
         working-directory: harbor
@@ -71,6 +86,8 @@ jobs:
         run: pnpm tauri build --config src-tauri/tauri.linux-system.conf.json --target x86_64-unknown-linux-gnu --bundles rpm
 
       - name: Validate Linux library ABI
+        env:
+          CHANNEL: ${{ inputs.channel }}
         run: |
           set -euo pipefail
           deb="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb -type f -name '*.deb' | head -n 1)"
@@ -82,6 +99,18 @@ jobs:
           if readelf -d "${tmpdir}/usr/bin/harbor" | grep -q 'Shared library: \[libmpv.so.1\]'; then
             echo "Harbor is linked against libmpv.so.1; Arch mpv provides libmpv.so.2." >&2
             exit 1
+          fi
+
+          if [ "${CHANNEL}" = beta ]; then
+            test "$(dpkg-deb -f "${deb}" Package)" = harbor-beta
+            dpkg-deb -f "${deb}" Conflicts | grep -Fx harbor
+            dpkg-deb -f "${deb}" Replaces | grep -Fx harbor
+
+            rpm="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm -type f -name '*.rpm' | head -n 1)"
+            test -n "${rpm}" || { echo "No RPM bundle was produced" >&2; exit 1; }
+            test "$(rpm -qp --qf '%{NAME}' "${rpm}")" = harbor-beta
+            rpm -qp --conflicts "${rpm}" | grep -Fx harbor
+            rpm -qp --obsoletes "${rpm}" | grep -Fx harbor
           fi
 
       - name: Collect artifacts
