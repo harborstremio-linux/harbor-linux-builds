@@ -16,7 +16,7 @@ Official Linux builds of [Harbor](https://github.com/harborstremio/harbor), buil
 
 ## Install beta
 
-### Arch Linux
+### <img src="https://cdn.simpleicons.org/archlinux/1793D1" width="20" height="20" align="absmiddle" alt="" /> Arch Linux
 
 Install the recommended beta package from the AUR. Updates arrive through your usual AUR helper.
 
@@ -26,7 +26,9 @@ paru -S harbor-stremio-beta-bin
 
 Replace `paru` with `yay` if that is your helper.
 
-### Ubuntu 24.04
+---
+
+### <img src="https://cdn.simpleicons.org/ubuntu/E95420" width="20" height="20" align="absmiddle" alt="" /> Ubuntu 24.04
 
 Install the beta package repository for automatic updates.
 
@@ -37,7 +39,9 @@ sudo apt install harbor-beta
 
 [Download the latest .deb directly instead →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
 
-### Fedora 44
+---
+
+### <img src="https://cdn.simpleicons.org/fedora/51A2DA" width="20" height="20" align="absmiddle" alt="" /> Fedora 44
 
 Install the beta package repository for automatic updates.
 
@@ -48,7 +52,9 @@ sudo dnf install harbor-beta
 
 [Download the latest .rpm directly instead →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
 
-### Flatpak
+---
+
+### <img src="https://cdn.simpleicons.org/flatpak/4A90D9" width="20" height="20" align="absmiddle" alt="" /> Flatpak
 
 [Download the latest .flatpak →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
 
@@ -56,7 +62,9 @@ sudo dnf install harbor-beta
 flatpak install --user ./Harbor_*.flatpak
 ```
 
-### AppImage (experimental)
+---
+
+### <img src="https://avatars.githubusercontent.com/u/16617932?s=200&amp;v=4" width="20" height="20" align="absmiddle" alt="" /> AppImage (experimental)
 
 [Download the latest .AppImage →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
 
