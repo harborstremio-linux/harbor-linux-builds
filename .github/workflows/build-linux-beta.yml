@@ -120,7 +120,7 @@ jobs:
     secrets: inherit
 
   publish-cloudsmith:
-    name: Publish beta Debian package to Cloudsmith
+    name: Publish beta Linux packages to Cloudsmith
     needs: [resolve, publish-channel]
     if: needs.publish-channel.result == 'success' && ((inputs.target || 'all') == 'all' || (inputs.target || 'all') == 'native' || (inputs.target || 'all') == 'deb' || (inputs.target || 'all') == 'rpm')
     runs-on: ubuntu-24.04

@@ -170,7 +170,7 @@ jobs:
             cp -v "${rpm}" "dist/Harbor-${VERSION}-1.x86_64.rpm"
           fi
           cd dist
-          sha256sum ./* > "SHA256SUMS-${VERSION}.txt"
+          sha256sum ./* | sed 's#  \./#  #' > "SHA256SUMS-${VERSION}.txt"
           ls -lh
 
       - name: Upload Linux bundles
