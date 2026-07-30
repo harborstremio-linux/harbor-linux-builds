@@ -56,7 +56,7 @@ sudo dnf install harbor-beta
 
 ### <img src="https://cdn.simpleicons.org/flatpak/4A90D9" width="20" height="20" align="absmiddle" alt="" /> Flatpak
 
-Install Harbor Beta from FlatPark for automatic updates.
+Install Harbor Beta from [<img src="https://flatpark.org/logo.svg" width="18" height="18" align="absmiddle" alt="" /> FlatPark](https://flatpark.org/) for automatic updates.
 
 ```bash
 flatpak --user remote-add --if-not-exists flatpark https://dl.flatpark.org/flatpark.flatpakrepo
