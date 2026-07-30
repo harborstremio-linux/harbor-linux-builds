@@ -56,7 +56,17 @@ sudo dnf install harbor-beta
 
 ### <img src="https://cdn.simpleicons.org/flatpak/4A90D9" width="20" height="20" align="absmiddle" alt="" /> Flatpak
 
-[Download the latest .flatpak →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
+Install Harbor Beta from FlatPark for automatic updates.
+
+```bash
+flatpak --user remote-add --if-not-exists flatpark https://dl.flatpark.org/flatpark.flatpakrepo
+flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak --user install flatpark site.harbor.Harbor.Beta
+```
+
+FlatPark provides the current beta channel. Flathub support will follow when stable Harbor releases become the main focus again.
+
+Prefer not to add FlatPark? [Download the latest .flatpak bundle instead →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
 
 ```bash
 flatpak install --user ./Harbor_*.flatpak
