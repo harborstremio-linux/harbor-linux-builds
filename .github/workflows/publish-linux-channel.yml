@@ -15,6 +15,11 @@ on:
         description: Harbor package version.
         required: true
         type: string
+      package_revision:
+        description: Native package revision (Debian revision and RPM release).
+        required: false
+        default: "1"
+        type: string
       channel:
         description: Package channel.
         required: true
@@ -55,6 +60,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           TAG: ${{ inputs.tag }}
           CHANNEL: ${{ inputs.channel }}
+          PACKAGE_REVISION: ${{ inputs.package_revision }}
           SOURCE_REF: ${{ inputs.source_ref }}
           TARGET: ${{ inputs.target }}
         run: |
@@ -91,6 +97,7 @@ jobs:
         working-directory: harbor
         env:
           CHANNEL: ${{ inputs.channel }}
+          PACKAGE_REVISION: ${{ inputs.package_revision }}
         run: |
           node <<'EOF'
           const fs = require("node:fs");
@@ -105,6 +112,7 @@ jobs:
             config.bundle.linux ??= {};
             config.bundle.linux.deb ??= {};
             config.bundle.linux.rpm ??= {};
+            config.bundle.linux.rpm.release = process.env.PACKAGE_REVISION;
             config.bundle.linux.deb.conflicts = ["harbor"];
             config.bundle.linux.deb.replaces = ["harbor"];
             config.bundle.linux.rpm.conflicts = ["harbor"];
@@ -128,6 +136,8 @@ jobs:
         env:
           CHANNEL: ${{ inputs.channel }}
           TARGET: ${{ inputs.target }}
+          VERSION: ${{ inputs.version }}
+          PACKAGE_REVISION: ${{ inputs.package_revision }}
         run: |
           set -euo pipefail
           if [ "${TARGET}" != rpm ]; then
@@ -150,11 +160,13 @@ jobs:
             test "$(rpm -qp --qf '%{NAME}' "${rpm}")" = harbor-beta
             rpm -qp --conflicts "${rpm}" | grep -Fx harbor
             rpm -qp --obsoletes "${rpm}" | grep -Fx harbor
+            test "$(rpm -qp --qf '%{RELEASE}' "${rpm}")" = "${PACKAGE_REVISION}"
           fi
 
       - name: Collect artifacts
         env:
           VERSION: ${{ inputs.version }}
+          PACKAGE_REVISION: ${{ inputs.package_revision }}
           TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
@@ -162,12 +174,17 @@ jobs:
           if [ "${TARGET}" != rpm ]; then
             deb="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb -type f -name '*.deb' | head -n 1)"
             test -n "${deb}" || { echo "No Debian bundle was produced" >&2; exit 1; }
-            cp -v "${deb}" "dist/Harbor_${VERSION}_amd64.deb"
+            deb_root="$(mktemp -d)"
+            trap 'rm -rf "${deb_root}"' EXIT
+            dpkg-deb -R "${deb}" "${deb_root}"
+            sed -i -E "s/^Version: .*/Version: ${VERSION}-${PACKAGE_REVISION}/" "${deb_root}/DEBIAN/control"
+            dpkg-deb -b "${deb_root}" "dist/Harbor_${VERSION}-${PACKAGE_REVISION}_amd64.deb"
+            test "$(dpkg-deb -f "dist/Harbor_${VERSION}-${PACKAGE_REVISION}_amd64.deb" Version)" = "${VERSION}-${PACKAGE_REVISION}"
           fi
           if [ "${TARGET}" != deb ]; then
             rpm="$(find harbor/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm -type f -name '*.rpm' | head -n 1)"
             test -n "${rpm}" || { echo "No RPM bundle was produced" >&2; exit 1; }
-            cp -v "${rpm}" "dist/Harbor-${VERSION}-1.x86_64.rpm"
+            cp -v "${rpm}" "dist/Harbor-${VERSION}-${PACKAGE_REVISION}.x86_64.rpm"
           fi
           cd dist
           sha256sum ./* | sed 's#  \./#  #' > "SHA256SUMS-${VERSION}.txt"
@@ -176,7 +193,7 @@ jobs:
       - name: Upload Linux bundles
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: linux-bundles-${{ inputs.version }}
+          name: linux-bundles-${{ inputs.version }}-${{ inputs.package_revision }}
           path: dist/
           if-no-files-found: error
 
@@ -194,7 +211,7 @@ jobs:
       - name: Download Linux bundles
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: linux-bundles-${{ inputs.version }}
+          name: linux-bundles-${{ inputs.version }}-${{ inputs.package_revision }}
           path: dist
 
       - name: Publish GitHub release
@@ -205,6 +222,7 @@ jobs:
           CHANNEL: ${{ inputs.channel }}
           SOURCE_REF: ${{ inputs.source_ref }}
           VERSION: ${{ inputs.version }}
+          PACKAGE_REVISION: ${{ inputs.package_revision }}
         run: |
           set -euo pipefail
           checksums="SHA256SUMS-${VERSION}.txt"
@@ -216,6 +234,30 @@ jobs:
           for asset_path in "${assets[@]}"; do names+=("$(basename "${asset_path}")"); done
           gh release download "${TAG}" --repo "${REPOSITORY}" --pattern "${checksums}" --dir "${previous_dir}" || true
           gh release upload "${TAG}" "${assets[@]}" --repo "${REPOSITORY}" --clobber
+
+          # Keep a single current native package per release. In particular,
+          # remove the legacy unrevisioned assets when publishing the first
+          # revisioned rebuild of an existing release.
+          while IFS= read -r asset; do
+            case "${asset}" in
+              Harbor_*_amd64.deb)
+                for current_asset in "${names[@]}"; do [ "${asset}" = "${current_asset}" ] && continue 2; done
+                for current_asset in "${names[@]}"; do
+                  [[ "${current_asset}" = *.deb ]] || continue
+                  gh release delete-asset "${TAG}" "${asset}" --repo "${REPOSITORY}" --yes
+                  break
+                done
+                ;;
+              Harbor-*.x86_64.rpm)
+                for current_asset in "${names[@]}"; do [ "${asset}" = "${current_asset}" ] && continue 2; done
+                for current_asset in "${names[@]}"; do
+                  [[ "${current_asset}" = *.rpm ]] || continue
+                  gh release delete-asset "${TAG}" "${asset}" --repo "${REPOSITORY}" --yes
+                  break
+                done
+                ;;
+            esac
+          done < <(gh release view "${TAG}" --repo "${REPOSITORY}" --json assets --jq '.assets[].name')
 
           # Preserve prior checksums only for assets still attached to this
           # release, then replace the core-package lines with fresh hashes.
@@ -249,7 +291,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           TAG: ${{ inputs.tag }}
-          DEB_ASSET: Harbor_${{ inputs.version }}_amd64.deb
+          DEB_ASSET: Harbor_${{ inputs.version }}-${{ inputs.package_revision }}_amd64.deb
         run: |
           set -euo pipefail
           expected_sha256="$(sha256sum "dist/${DEB_ASSET}" | awk '{print $1}')"
@@ -270,7 +312,8 @@ jobs:
           tag: ${{ inputs.tag }}
           channel: ${{ inputs.channel }}
           package: ${{ inputs.aur_package }}
-          deb_asset: Harbor_${{ inputs.version }}_amd64.deb
+          package_revision: ${{ inputs.package_revision }}
+          deb_asset: Harbor_${{ inputs.version }}-${{ inputs.package_revision }}_amd64.deb
           deb_sha256: ${{ steps.published_deb.outputs.sha256 }}
           repository: ${{ github.repository }}
 

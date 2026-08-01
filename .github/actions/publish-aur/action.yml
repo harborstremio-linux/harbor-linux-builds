@@ -10,6 +10,8 @@ inputs:
     required: true
   package:
     required: true
+  package_revision:
+    required: true
   deb_asset:
     required: true
   deb_sha256:
@@ -40,6 +42,7 @@ runs:
         TAG: ${{ inputs.tag }}
         CHANNEL: ${{ inputs.channel }}
         AUR_PACKAGE: ${{ inputs.package }}
+        PACKAGE_REVISION: ${{ inputs.package_revision }}
         DEB_ASSET: ${{ inputs.deb_asset }}
         DEB_SHA256: ${{ inputs.deb_sha256 }}
         REPOSITORY: ${{ inputs.repository }}
@@ -57,12 +60,7 @@ runs:
           provides="provides=('harbor-stremio' 'harbor')"
           conflicts="conflicts=('harbor-stremio' 'harbor' 'harbor-stremio-git')"
         fi
-        pkgrel=1
-        if [ -f "${tmpdir}/PKGBUILD" ]; then
-          current_pkgver="$(awk -F= '/^pkgver=/{print $2; exit}' "${tmpdir}/PKGBUILD")"
-          current_pkgrel="$(awk -F= '/^pkgrel=/{print $2; exit}' "${tmpdir}/PKGBUILD")"
-          if [ "${current_pkgver}" = "${VERSION}" ] && [[ "${current_pkgrel}" =~ ^[0-9]+$ ]]; then pkgrel="$((current_pkgrel + 1))"; fi
-        fi
+        pkgrel="${PACKAGE_REVISION}"
         cat > "${tmpdir}/PKGBUILD" <<EOF
         # Maintainer: Aditya Hebballe <adityahebballe@proton.me>
         pkgname=${AUR_PACKAGE}

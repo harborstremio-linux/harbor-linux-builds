@@ -45,6 +45,7 @@ jobs:
       source_ref: ${{ steps.resolve.outputs.source_ref }}
       tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
+      package_revision: ${{ steps.resolve.outputs.package_revision }}
       aur_package: ${{ steps.resolve.outputs.aur_package }}
       should_build: ${{ steps.check.outputs.should_build }}
     steps:
@@ -76,10 +77,22 @@ jobs:
           existing_tag="$(gh release list --repo "${REPOSITORY}" --limit 100 --json name,tagName | jq -r --arg name "Harbor Linux beta-v${version}" '.[] | select(.name == $name) | .tagName' | head -n 1)"
           tag="${existing_tag:-beta-v${version}}"
 
+          # Native repositories must receive a monotonically increasing
+          # package revision.  APT/DNF do not upgrade an installed package
+          # merely because an equal-version artifact was replaced upstream.
+          package_revision=1
+          if gh release view "${tag}" --repo "${REPOSITORY}" >/dev/null 2>&1; then
+            previous_revision="$(gh release view "${tag}" --repo "${REPOSITORY}" --json assets --jq '.assets[].name' | sed -nE "s#^Harbor_${version}-([0-9]+)_amd64\\.deb\$#\\1#p" | sort -n | tail -n 1)"
+            # Releases published before package revisions used an unrevisioned
+            # .deb; treat that as revision 1.
+            package_revision="$(( ${previous_revision:-1} + 1 ))"
+          fi
+
           {
             echo "source_ref=${source_ref}"
             echo "tag=${tag}"
             echo "version=${version}"
+            echo "package_revision=${package_revision}"
             echo "aur_package=harbor-stremio-beta-bin"
           } >> "${GITHUB_OUTPUT}"
 
@@ -114,6 +127,7 @@ jobs:
       source_ref: ${{ needs.resolve.outputs.source_ref }}
       tag: ${{ needs.resolve.outputs.tag }}
       version: ${{ needs.resolve.outputs.version }}
+      package_revision: ${{ needs.resolve.outputs.package_revision }}
       channel: beta
       aur_package: ${{ needs.resolve.outputs.aur_package }}
       target: ${{ inputs.target || 'all' }}
@@ -131,16 +145,17 @@ jobs:
       - name: Download Linux bundles
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: linux-bundles-${{ needs.resolve.outputs.version }}
+          name: linux-bundles-${{ needs.resolve.outputs.version }}-${{ needs.resolve.outputs.package_revision }}
           path: dist
 
       - name: Verify Debian package checksum
         if: inputs.target != 'rpm'
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
+          PACKAGE_REVISION: ${{ needs.resolve.outputs.package_revision }}
         run: |
           set -euo pipefail
-          asset="Harbor_${VERSION}_amd64.deb"
+          asset="Harbor_${VERSION}-${PACKAGE_REVISION}_amd64.deb"
           checksums="SHA256SUMS-${VERSION}.txt"
           (
             cd dist
@@ -151,9 +166,10 @@ jobs:
         if: inputs.target != 'deb'
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
+          PACKAGE_REVISION: ${{ needs.resolve.outputs.package_revision }}
         run: |
           set -euo pipefail
-          asset="Harbor-${VERSION}-1.x86_64.rpm"
+          asset="Harbor-${VERSION}-${PACKAGE_REVISION}.x86_64.rpm"
           checksums="SHA256SUMS-${VERSION}.txt"
           (
             cd dist
@@ -171,12 +187,12 @@ jobs:
         env:
           CLOUDSMITH_REPOSITORY: ${{ vars.CLOUDSMITH_BETA_REPOSITORY }}
           VERSION: ${{ needs.resolve.outputs.version }}
+          PACKAGE_REVISION: ${{ needs.resolve.outputs.package_revision }}
         run: |
           set -euo pipefail
           test -n "${CLOUDSMITH_REPOSITORY}"
           cloudsmith push deb "${CLOUDSMITH_REPOSITORY}/ubuntu/noble" \
-            "dist/Harbor_${VERSION}_amd64.deb" \
-            --republish \
+            "dist/Harbor_${VERSION}-${PACKAGE_REVISION}_amd64.deb" \
             --tags beta
 
       - name: Publish verified RPM package
@@ -185,13 +201,13 @@ jobs:
           CLOUDSMITH_REPOSITORY: ${{ vars.CLOUDSMITH_BETA_REPOSITORY }}
           RPM_DISTRIBUTION: ${{ vars.CLOUDSMITH_BETA_RPM_DISTRIBUTION || 'fedora/44' }}
           VERSION: ${{ needs.resolve.outputs.version }}
+          PACKAGE_REVISION: ${{ needs.resolve.outputs.package_revision }}
         run: |
           set -euo pipefail
           test -n "${CLOUDSMITH_REPOSITORY}"
           test -n "${RPM_DISTRIBUTION}"
           cloudsmith push rpm "${CLOUDSMITH_REPOSITORY}/${RPM_DISTRIBUTION}" \
-            "dist/Harbor-${VERSION}-1.x86_64.rpm" \
-            --republish \
+            "dist/Harbor-${VERSION}-${PACKAGE_REVISION}.x86_64.rpm" \
             --tags beta
 
   update-readme:

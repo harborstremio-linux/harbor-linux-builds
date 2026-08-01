@@ -97,6 +97,7 @@ jobs:
       source_ref: ${{ needs.resolve.outputs.source_ref }}
       tag: ${{ needs.resolve.outputs.tag }}
       version: ${{ needs.resolve.outputs.version }}
+      package_revision: "1"
       channel: stable
       aur_package: ${{ needs.resolve.outputs.aur_package }}
     secrets: inherit
