@@ -304,6 +304,9 @@ jobs:
 
       - name: Update AUR package
         if: inputs.target != 'rpm'
+        # AUR maintenance must not prevent verified native packages from
+        # reaching the beta repository. The next eligible run retries AUR.
+        continue-on-error: true
         uses: ./.github/actions/publish-aur
         env:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
@@ -356,6 +359,10 @@ jobs:
         run: |
           set -euo pipefail
           rsync -a --delete flatpak-artifact/ flatpak/
+          # Artifact downloads do not preserve executable bits. Keep this
+          # helper executable in the generated commit as well as invoking it
+          # through bash in the Flatpak workflow.
+          chmod +x flatpak/update-flatpak.sh
           git add flatpak
           if git diff --cached --quiet; then exit 0; fi
           git config user.name "Aditya Hebballe"
