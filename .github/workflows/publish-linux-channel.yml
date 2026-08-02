@@ -104,13 +104,17 @@ jobs:
           const path = "src-tauri/tauri.conf.json";
           const config = JSON.parse(fs.readFileSync(path, "utf8"));
           config.bundle.createUpdaterArtifacts = false;
+          config.bundle.linux ??= {};
+          config.bundle.linux.deb ??= {};
+          config.bundle.linux.deb.depends ??= [];
+          if (!config.bundle.linux.deb.depends.includes("libudev1")) {
+            config.bundle.linux.deb.depends.push("libudev1");
+          }
 
           if (process.env.CHANNEL === "beta") {
             // This changes Linux package identity only. Keep the Tauri
             // identifier untouched so beta/stable use the same Harbor data.
             config.productName = "Harbor Beta";
-            config.bundle.linux ??= {};
-            config.bundle.linux.deb ??= {};
             config.bundle.linux.rpm ??= {};
             config.bundle.linux.rpm.release = process.env.PACKAGE_REVISION;
             config.bundle.linux.deb.conflicts = ["harbor"];

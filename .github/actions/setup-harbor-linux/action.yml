@@ -33,7 +33,7 @@ runs:
       run: |
         set -euo pipefail
         sudo apt-get update
-        sudo apt-get install -y ca-certificates ffmpeg libasound2-dev libayatana-appindicator3-dev libgtk-3-dev libmpv-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev patchelf pkg-config yt-dlp
+        sudo apt-get install -y ca-certificates ffmpeg libasound2-dev libayatana-appindicator3-dev libgtk-3-dev libmpv-dev librsvg2-dev libssl-dev libudev-dev libwebkit2gtk-4.1-dev patchelf pkg-config xdg-utils yt-dlp
 
     - name: Install AppImage media dependencies
       if: inputs.include_gstreamer == 'true'
