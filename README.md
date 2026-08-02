@@ -3,14 +3,14 @@
 Official Linux builds of [Harbor](https://github.com/harborstremio/harbor), built from its upstream source tags by GitHub Actions.
 
 <p align="center">
-  <a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115"><strong>Download beta</strong></a>
+  <a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.116"><strong>Download beta</strong></a>
   ·
   <a href="https://github.com/harborstremio-linux/harbor-linux-builds/releases/latest"><strong>Download stable</strong></a>
   ·
   <a href="https://github.com/harborstremio/harbor"><strong>Harbor upstream</strong></a>
 </p>
 
-> **x86_64 only.** Choose the package that fits your distribution below. Every package download below follows the current [beta release](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115).
+> **x86_64 only.** Choose the package that fits your distribution below. Every package download below follows the current [beta release](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.116).
 
 > **Beta is recommended.** Harbor development currently moves through the beta channel; stable releases are less frequent and can lag behind the current beta version.
 
@@ -37,7 +37,7 @@ curl -1sLf 'https://dl.cloudsmith.io/public/harborstremio/harbor-beta/setup.deb.
 sudo apt install harbor-beta
 ```
 
-[Download the latest .deb directly instead →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
+[Download the latest .deb directly instead →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.116)
 
 ---
 
@@ -50,7 +50,7 @@ curl -1sLf 'https://dl.cloudsmith.io/public/harborstremio/harbor-beta/setup.rpm.
 sudo dnf install harbor-beta
 ```
 
-[Download the latest .rpm directly instead →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
+[Download the latest .rpm directly instead →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.116)
 
 ---
 
@@ -66,7 +66,7 @@ flatpak --user install flatpark site.harbor.Harbor.Beta
 
 FlatPark provides the current beta channel. Flathub support will follow when stable Harbor releases become the main focus again.
 
-Prefer not to add FlatPark? [Download the latest .flatpak bundle instead →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
+Prefer not to add FlatPark? [Download the latest .flatpak bundle instead →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.116)
 
 ```bash
 flatpak install --user ./Harbor_*.flatpak
@@ -76,7 +76,7 @@ flatpak install --user ./Harbor_*.flatpak
 
 ### <img src="https://avatars.githubusercontent.com/u/16617932?s=200&amp;v=4" width="20" height="20" align="absmiddle" alt="" /> AppImage (experimental)
 
-[Download the latest .AppImage →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
+[Download the latest .AppImage →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.116)
 
 ```bash
 chmod +x Harbor_*.AppImage
@@ -89,7 +89,7 @@ A portable x86_64 build using Tauri's experimental AppImage bundler, pending [up
 
 ## Verify a download
 
-Each release includes a SHA-256 checksum file for the core package assets. [Get SHA256SUMS from the current beta →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.115)
+Each release includes a SHA-256 checksum file for the core package assets. [Get SHA256SUMS from the current beta →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.116)
 
 ```bash
 sha256sum -c SHA256SUMS-*.txt
