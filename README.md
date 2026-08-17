@@ -50,6 +50,17 @@ curl -1sLf 'https://dl.cloudsmith.io/public/harborstremio/harbor-beta/setup.rpm.
 sudo dnf install harbor-beta
 ```
 
+> [!NOTE]
+> **Temporary Fedora 44 workaround:** If installation fails with `Curl error (77)`
+> referencing `/etc/pki/tls/certs/ca-bundle.crt`, update the Cloudsmith repository
+> configuration to use Fedora 44's current CA bundle, clear the cache, and retry:
+>
+> ```bash
+> sudo sed -i 's|sslcacert=/etc/pki/tls/certs/ca-bundle.crt|sslcacert=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem|' /etc/yum.repos.d/harborstremio-harbor-beta.repo
+> sudo dnf clean all
+> sudo dnf install harbor-beta
+> ```
+
 [Download the latest .rpm directly instead →](https://github.com/harborstremio-linux/harbor-linux-builds/releases/tag/beta-v0.9.117)
 
 ---
