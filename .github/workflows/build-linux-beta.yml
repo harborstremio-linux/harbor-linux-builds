@@ -180,7 +180,6 @@ jobs:
         uses: cloudsmith-io/cloudsmith-cli-action@ad73fafb92e3e29a5166c529464c2df7658a608e # v3.1.0
         with:
           api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
-          cli-version: 1.8.3
 
       - name: Publish verified Debian package
         if: inputs.target != 'rpm'
