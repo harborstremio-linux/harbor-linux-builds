@@ -1,6 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "identifier": "site.harbor.Harbor",
+  "build": {
+    "beforeBuildCommand": "node flatpak-node/pnpm-cli/bin/pnpm.cjs build"
+  },
   "bundle": {
     "active": false,
     "externalBin": []
