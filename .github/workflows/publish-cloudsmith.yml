@@ -6,12 +6,17 @@ on:
       release_tag:
         description: Existing GitHub release tag containing the Debian package.
         required: true
-        default: beta-v0.9.115
+        default: beta-v0.9.124
         type: string
       version:
         description: Harbor package version to publish.
         required: true
-        default: 0.9.115
+        default: 0.9.124
+        type: string
+      package_revision:
+        description: Native package revision (Debian revision and RPM release).
+        required: false
+        default: "1"
         type: string
       cloudsmith_repository:
         description: Cloudsmith owner/repository slug.
@@ -38,18 +43,21 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           TAG: ${{ inputs.release_tag }}
           VERSION: ${{ inputs.version }}
+          PACKAGE_REVISION: ${{ inputs.package_revision || '1' }}
         run: |
           set -euo pipefail
           checksums="SHA256SUMS-${VERSION}.txt"
+          deb_asset="Harbor_${VERSION}-${PACKAGE_REVISION}_amd64.deb"
+          rpm_asset="Harbor-${VERSION}-${PACKAGE_REVISION}.x86_64.rpm"
           mkdir dist
           gh release download "${TAG}" --repo "${REPOSITORY}" \
-            --pattern "Harbor_${VERSION}_amd64.deb" \
-            --pattern "Harbor-${VERSION}-1.x86_64.rpm" \
+            --pattern "${deb_asset}" \
+            --pattern "${rpm_asset}" \
             --pattern "${checksums}" \
             --dir dist
           (
             cd dist
-            grep -F -e "  Harbor_${VERSION}_amd64.deb" -e "  Harbor-${VERSION}-1.x86_64.rpm" "${checksums}" | sha256sum --check --strict
+            grep -F -e "  ${deb_asset}" -e "  ${rpm_asset}" "${checksums}" | sha256sum --check --strict
           )
 
       - name: Install Cloudsmith CLI
@@ -61,10 +69,11 @@ jobs:
         env:
           CLOUDSMITH_REPOSITORY: ${{ inputs.cloudsmith_repository }}
           VERSION: ${{ inputs.version }}
+          PACKAGE_REVISION: ${{ inputs.package_revision || '1' }}
         run: |
           set -euo pipefail
           cloudsmith push deb "${CLOUDSMITH_REPOSITORY}/ubuntu/noble" \
-            "dist/Harbor_${VERSION}_amd64.deb" \
+            "dist/Harbor_${VERSION}-${PACKAGE_REVISION}_amd64.deb" \
             --republish \
             --tags beta
 
@@ -73,10 +82,11 @@ jobs:
           CLOUDSMITH_REPOSITORY: ${{ inputs.cloudsmith_repository }}
           RPM_DISTRIBUTION: ${{ vars.CLOUDSMITH_BETA_RPM_DISTRIBUTION || 'fedora/44' }}
           VERSION: ${{ inputs.version }}
+          PACKAGE_REVISION: ${{ inputs.package_revision || '1' }}
         run: |
           set -euo pipefail
           test -n "${RPM_DISTRIBUTION}"
           cloudsmith push rpm "${CLOUDSMITH_REPOSITORY}/${RPM_DISTRIBUTION}" \
-            "dist/Harbor-${VERSION}-1.x86_64.rpm" \
+            "dist/Harbor-${VERSION}-${PACKAGE_REVISION}.x86_64.rpm" \
             --republish \
             --tags beta
