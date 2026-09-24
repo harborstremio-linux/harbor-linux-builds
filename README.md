@@ -65,6 +65,31 @@ sudo dnf install harbor-beta
 
 ---
 
+### <img src="https://cdn.simpleicons.org/nixos/5277C3" width="20" height="20" align="absmiddle" alt="" /> NixOS
+
+Install Harbor using the Nix flake at [axioncs/harbor-flake](https://github.com/axioncs/harbor-flake).
+
+Run directly without installing:
+
+```bash
+nix run github:axioncs/harbor-flake
+```
+
+Or add it as a flake input:
+
+```nix
+{
+  inputs.harbor = {
+    url = "github:axioncs/harbor-flake";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+}
+```
+
+See [axioncs/harbor-flake](https://github.com/axioncs/harbor-flake) for Home Manager setup and further options.
+
+---
+
 ### <img src="https://cdn.simpleicons.org/flatpak/4A90D9" width="20" height="20" align="absmiddle" alt="" /> Flatpak
 
 Install Harbor Beta from [<img src="https://flatpark.org/logo.svg" width="18" height="18" align="absmiddle" alt="" /> FlatPark](https://flatpark.org/) for automatic updates.
@@ -112,6 +137,7 @@ Stable packages follow upstream Harbor release tags. They are published less fre
 
 - [Download the latest stable release](https://github.com/harborstremio-linux/harbor-linux-builds/releases/latest)
 - Arch Linux: [`harbor-stremio-bin`](https://aur.archlinux.org/packages/harbor-stremio-bin)
+- Nix: [`github:axioncs/harbor-flake#stable`](https://github.com/axioncs/harbor-flake#channels)
 
 ```bash
 paru -S harbor-stremio-bin
