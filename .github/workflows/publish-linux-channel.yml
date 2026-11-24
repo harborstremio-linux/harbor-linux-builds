@@ -368,7 +368,7 @@ jobs:
           )
 
       - name: Install Cloudsmith CLI
-        uses: cloudsmith-io/cloudsmith-cli-action@ad73fafb92e3e29a5166c529464c2df7658a608e # v3.1.0
+        uses: cloudsmith-io/cloudsmith-cli-action@16c782c5f3eeea2259957aa17218093d85fdcecd # v3.2.4
         with:
           api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
 
